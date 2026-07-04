@@ -1,12 +1,14 @@
 """
 video_utils.py
 ==============
-Utilities for opening video files, extracting frames at a configurable interval,
-and encoding them as base64 JPEG strings ready for API transmission.
+Utilities for opening video files, detecting scene boundaries, extracting the
+representative middle frame of each scene, and encoding frames as base64 JPEG
+strings ready for API transmission.
 
 Public API
 ----------
-- extract_frames(video_path, interval_seconds, jpeg_quality, include_data_uri_prefix)
+- extract_frames(video_path, threshold, min_scene_len, jpeg_quality,
+                 include_data_uri_prefix)
     -> list[FrameData]
 - get_video_info(video_path)
     -> VideoInfo
@@ -16,6 +18,21 @@ Internal helpers
 - _open_capture(video_path)  - opens and validates a cv2.VideoCapture
 - _format_timestamp(seconds) - converts float seconds -> "HH:MM:SS.mmm"
 - _encode_frame(frame, jpeg_quality, include_data_uri_prefix) - BGR array -> base64 str
+- _uniform_fallback(video_path, jpeg_quality, include_data_uri_prefix)
+    - fallback uniform 2-second sampler used when no scenes are detected
+
+Scene detection
+---------------
+PySceneDetect (v0.6+) is used via the ``scenedetect.detect()`` /
+``scenedetect.open_video()`` API.  The ``ContentDetector`` finds hard cuts by
+comparing HSV histograms between consecutive frames.
+
+For each detected scene, the *middle* frame is extracted as the representative
+image:
+    middle_frame = scene_start_frame + (scene_end_frame - scene_start_frame) // 2
+
+If no scenes are detected (threshold too high, no cuts present, etc.), the
+function falls back to uniform 2-second sampling and logs a warning.
 """
 
 from __future__ import annotations
@@ -27,6 +44,10 @@ from typing import TypedDict, Union
 
 import cv2
 import numpy as np
+
+# PySceneDetect v0.6+ public API.
+from scenedetect import ContentDetector, SceneManager, open_video
+from scenedetect.scene_manager import SceneList
 
 # ---------------------------------------------------------------------------
 # Module-level logger
@@ -54,12 +75,24 @@ class FrameData(TypedDict):
     base64_image : str
         JPEG-encoded frame as a base64 string.  When *include_data_uri_prefix*
         is ``True`` the string is prefixed with ``"data:image/jpeg;base64,"``.
+    scene_number : int
+        1-based index of the scene this frame belongs to.
+        Set to ``0`` for frames produced by the uniform fallback sampler.
+    scene_start_str : str
+        Scene start boundary in ``"HH:MM:SS.mmm"`` format.
+        Empty string for frames produced by the uniform fallback sampler.
+    scene_end_str : str
+        Scene end boundary in ``"HH:MM:SS.mmm"`` format.
+        Empty string for frames produced by the uniform fallback sampler.
     """
 
     frame_number: int
     timestamp_seconds: float
     timestamp_str: str
     base64_image: str
+    scene_number: int
+    scene_start_str: str
+    scene_end_str: str
 
 
 class VideoInfo(TypedDict):
@@ -217,6 +250,111 @@ def _encode_frame(
     return b64_str
 
 
+def _uniform_fallback(
+    video_path: Union[str, Path],
+    jpeg_quality: int,
+    include_data_uri_prefix: bool,
+    interval_seconds: float = 2.0,
+) -> list[FrameData]:
+    """Extract one frame every *interval_seconds* as a fallback.
+
+    Called automatically by :func:`extract_frames` when PySceneDetect finds
+    no scene boundaries.  Uses the same seek-based approach as the original
+    uniform sampler.  All returned :class:`FrameData` dicts have
+    ``scene_number=0`` and empty ``scene_start_str`` / ``scene_end_str`` to
+    signal that they came from the fallback path.
+
+    Parameters
+    ----------
+    video_path:
+        Path to the video file.
+    jpeg_quality:
+        JPEG compression quality in the range ``[0, 100]``.
+    include_data_uri_prefix:
+        If ``True``, prepend the data URI prefix to each base64 string.
+    interval_seconds:
+        Seconds between sampled frames.  Defaults to ``2.0``.
+
+    Returns
+    -------
+    list[FrameData]
+        Frames in chronological order, or an empty list if the video cannot
+        be read.
+    """
+    cap = _open_capture(video_path)
+    try:
+        fps: float = cap.get(cv2.CAP_PROP_FPS)
+        total_frames: int = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if fps <= 0:
+            logger.error(
+                "Fallback sampler: video '%s' reports FPS=%s — cannot sample.",
+                video_path,
+                fps,
+            )
+            return []
+
+        frames_per_interval: float = fps * interval_seconds
+        results: list[FrameData] = []
+        step = 0
+
+        while True:
+            target_frame_index = int(round(step * frames_per_interval))
+            if target_frame_index >= total_frames:
+                break
+
+            cap.set(cv2.CAP_PROP_POS_FRAMES, float(target_frame_index))
+            success, frame = cap.read()
+
+            if not success or frame is None or frame.size == 0:
+                logger.warning(
+                    "Fallback sampler: could not decode frame %d from '%s' — skipping.",
+                    target_frame_index,
+                    video_path,
+                )
+                step += 1
+                continue
+
+            reported_ms: float = cap.get(cv2.CAP_PROP_POS_MSEC)
+            timestamp_seconds = (
+                round(reported_ms / 1000.0, 3)
+                if reported_ms >= 0
+                else round(target_frame_index / fps, 3)
+            )
+
+            try:
+                b64_image = _encode_frame(frame, jpeg_quality, include_data_uri_prefix)
+            except RuntimeError as exc:
+                logger.warning(
+                    "Fallback sampler: failed to encode frame %d from '%s': %s — skipping.",
+                    target_frame_index,
+                    video_path,
+                    exc,
+                )
+                step += 1
+                continue
+
+            frame_data: FrameData = {
+                "frame_number": target_frame_index,
+                "timestamp_seconds": timestamp_seconds,
+                "timestamp_str": _format_timestamp(timestamp_seconds),
+                "base64_image": b64_image,
+                "scene_number": 0,        # 0 signals fallback origin
+                "scene_start_str": "",
+                "scene_end_str": "",
+            }
+            results.append(frame_data)
+            step += 1
+
+        return results
+
+    finally:
+        cap.release()
+        logger.debug(
+            "Released VideoCapture for '%s' (uniform fallback)", video_path
+        )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -296,35 +434,48 @@ def get_video_info(video_path: Union[str, Path]) -> VideoInfo:
 
 def extract_frames(
     video_path: Union[str, Path],
-    interval_seconds: float = 2.0,
+    threshold: float = 27.0,
+    min_scene_len: int = 15,
     jpeg_quality: int = 85,
     include_data_uri_prefix: bool = False,
 ) -> list[FrameData]:
-    """Extract one frame every *interval_seconds* from a video file.
+    """Detect scene boundaries and extract the middle frame of each scene.
 
-    The first extracted frame is always the very first frame of the video
-    (frame 0, timestamp 0.0 s).  Subsequent frames are sampled at multiples
-    of *interval_seconds*.
+    Uses PySceneDetect's :class:`~scenedetect.ContentDetector` to locate hard
+    cuts in *video_path*.  For every detected scene the *middle* frame is
+    chosen as the representative image:
 
-    If a particular frame cannot be decoded (e.g. corrupted packet mid-video),
-    a warning is logged and that frame is skipped; extraction continues with
-    the next target timestamp.
+    .. code-block:: text
 
-    The :class:`cv2.VideoCapture` is **always** released before this function
-    returns, even if an exception is raised.
+        middle_frame = scene_start_frame + (scene_end_frame - scene_start_frame) // 2
+
+    **Fallback behaviour**: if no scenes are detected (e.g. *threshold* is too
+    high, or the video contains no cuts), the function automatically falls back
+    to uniform 2-second sampling and logs a warning.  Fallback frames have
+    ``scene_number=0`` and empty ``scene_start_str`` / ``scene_end_str``.
+
+    **Two-handle design**: PySceneDetect opens the video through its own
+    ``open_video()`` handle for detection; a separate :class:`cv2.VideoCapture`
+    (opened via :func:`_open_capture`) is used exclusively for frame reading.
+    The cv2 handle is always released in a ``finally`` block.
 
     Parameters
     ----------
     video_path:
         Absolute or relative path to the video file.  Accepts both
         :class:`str` and :class:`pathlib.Path` objects.
-    interval_seconds:
-        Time gap between consecutive extracted frames, in seconds.
-        Must be greater than zero.  Defaults to ``2.0``.
+    threshold:
+        Content-change score above which a frame is considered a scene cut.
+        Lower values = more sensitive (more scenes detected).
+        Defaults to ``27.0`` (PySceneDetect standard default for hard cuts).
+    min_scene_len:
+        Minimum number of frames a scene must contain to be kept.
+        Shorter scenes are merged with their neighbour by PySceneDetect.
+        Defaults to ``15``.
     jpeg_quality:
         JPEG compression quality in the range ``[0, 100]``.
         Higher values = better quality + larger base64 payload.
-        Defaults to ``85`` (high quality, reasonable size).
+        Defaults to ``85``.
     include_data_uri_prefix:
         When ``True``, each ``base64_image`` value is prefixed with
         ``"data:image/jpeg;base64,"`` so it can be embedded directly in HTML
@@ -334,167 +485,214 @@ def extract_frames(
     Returns
     -------
     list[FrameData]
-        A list of dicts, one per successfully extracted frame, in chronological
+        One entry per successfully extracted scene frame, in chronological
         order.  Each dict contains:
 
-        * **frame_number** (``int``) - 0-based index within the video file.
-        * **timestamp_seconds** (``float``) - position in seconds,
-          rounded to 3 decimal places.
-        * **timestamp_str** (``str``) - ``"HH:MM:SS.mmm"`` formatted timestamp.
+        * **frame_number** (``int``) - 0-based frame index within the video.
+        * **timestamp_seconds** (``float``) - position in seconds, rounded to
+          3 decimal places.
+        * **timestamp_str** (``str``) - ``"HH:MM:SS.mmm"`` formatted timestamp
+          of the extracted middle frame.
         * **base64_image** (``str``) - JPEG-encoded frame as a base64 string,
           optionally prefixed with the data URI scheme.
+        * **scene_number** (``int``) - 1-based scene index.  ``0`` if this
+          frame came from the uniform fallback sampler.
+        * **scene_start_str** (``str``) - ``"HH:MM:SS.mmm"`` scene start time.
+          Empty string for fallback frames.
+        * **scene_end_str** (``str``) - ``"HH:MM:SS.mmm"`` scene end time.
+          Empty string for fallback frames.
 
     Raises
     ------
     FileNotFoundError
         If *video_path* does not exist or is not a regular file.
     IOError
-        If OpenCV cannot open the file.
+        If OpenCV cannot open the file for the frame-reading phase.
     ValueError
-        If *interval_seconds* is not a positive number, or if *jpeg_quality*
-        is outside ``[0, 100]``.
+        If *jpeg_quality* is outside ``[0, 100]``.
     RuntimeError
-        If the video reports zero or negative FPS, making frame calculation
-        impossible.
+        If PySceneDetect cannot open the video for scene detection.
 
     Examples
     --------
     >>> frames = extract_frames("input/sample.mp4")
-    >>> len(frames)
-    21
-    >>> frames[0]["timestamp_str"]
+    >>> frames[0]["scene_number"]
+    1
+    >>> frames[0]["scene_start_str"]
     '00:00:00.000'
-    >>> frames[1]["timestamp_str"]
-    '00:00:02.000'
+    >>> frames[0]["timestamp_str"]  # middle frame of scene 1
+    '00:00:03.240'
 
-    >>> # Higher quality, with data URI prefix, every 5 seconds
+    >>> # More sensitive detection, higher JPEG quality
     >>> frames = extract_frames(
     ...     "input/sample.mp4",
-    ...     interval_seconds=5.0,
+    ...     threshold=20.0,
+    ...     min_scene_len=10,
     ...     jpeg_quality=95,
-    ...     include_data_uri_prefix=True,
     ... )
-    >>> frames[0]["base64_image"].startswith("data:image/jpeg;base64,")
-    True
     """
     # ------------------------------------------------------------------
     # Validate parameters before touching the file system.
     # ------------------------------------------------------------------
-    if interval_seconds <= 0:
-        raise ValueError(
-            f"interval_seconds must be a positive number; got {interval_seconds!r}"
-        )
     if not (0 <= jpeg_quality <= 100):
         raise ValueError(
             f"jpeg_quality must be in the range [0, 100]; got {jpeg_quality!r}"
         )
 
+    path = Path(video_path)
+
     # ------------------------------------------------------------------
-    # Open the capture; it is always released in the finally block below.
+    # Phase 1: Scene detection via PySceneDetect.
+    #
+    # open_video() opens its own internal handle — entirely separate from
+    # the cv2.VideoCapture used in Phase 2.  SceneManager.detect_scenes()
+    # reads through the video and populates the scene list.
     # ------------------------------------------------------------------
-    cap = _open_capture(video_path)
+    logger.info(
+        "Running scene detection on '%s' | threshold=%.1f | min_scene_len=%d",
+        path,
+        threshold,
+        min_scene_len,
+    )
+
+    try:
+        sd_video = open_video(str(path))
+    except Exception as exc:
+        raise RuntimeError(
+            f"PySceneDetect could not open '{path}' for scene detection: {exc}"
+        ) from exc
+
+    scene_manager = SceneManager()
+    scene_manager.add_detector(
+        ContentDetector(threshold=threshold, min_scene_len=min_scene_len)
+    )
+
+    scene_manager.detect_scenes(video=sd_video, show_progress=False)
+    scene_list: SceneList = scene_manager.get_scene_list()
+
+    logger.info(
+        "Scene detection complete: %d scene(s) found in '%s'.",
+        len(scene_list),
+        path,
+    )
+
+    # ------------------------------------------------------------------
+    # Fallback: no scenes detected → uniform 2-second sampling.
+    # ------------------------------------------------------------------
+    if not scene_list:
+        logger.warning(
+            "No scenes detected in '%s' (threshold=%.1f). "
+            "Falling back to uniform 2-second frame sampling.",
+            path,
+            threshold,
+        )
+        return _uniform_fallback(path, jpeg_quality, include_data_uri_prefix)
+
+    # ------------------------------------------------------------------
+    # Phase 2: Frame extraction via a dedicated cv2.VideoCapture.
+    #
+    # A fresh handle is opened here so there is no shared state with the
+    # PySceneDetect handle from Phase 1.  It is always released in the
+    # finally block below.
+    # ------------------------------------------------------------------
+    cap = _open_capture(path)
 
     try:
         fps: float = cap.get(cv2.CAP_PROP_FPS)
-        total_frames: int = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         if fps <= 0:
             raise RuntimeError(
-                f"Video '{video_path}' reports FPS={fps}. "
-                "Cannot calculate frame positions with non-positive FPS."
+                f"Video '{path}' reports FPS={fps}. "
+                "Cannot calculate middle-frame positions with non-positive FPS."
             )
-
-        # Number of source frames that correspond to one interval step.
-        frames_per_interval: float = fps * interval_seconds
-
-        logger.info(
-            "Extracting frames from '%s' | FPS=%.3f | total_frames=%d | "
-            "interval=%.2fs (~%.1f frames/step) | quality=%d",
-            video_path,
-            fps,
-            total_frames,
-            interval_seconds,
-            frames_per_interval,
-            jpeg_quality,
-        )
 
         results: list[FrameData] = []
 
-        # ------------------------------------------------------------------
-        # Build the list of target frame indices to sample.
-        #
-        # Iterate: 0, round(1 * frames_per_interval),
-        #          round(2 * frames_per_interval), ...
-        # until the index would exceed the last valid frame.
-        #
-        # Using floating-point accumulation (step * frames_per_interval) instead
-        # of integer addition avoids cumulative rounding drift across many steps.
-        # ------------------------------------------------------------------
-        step = 0
-        while True:
-            target_frame_index = int(round(step * frames_per_interval))
+        for scene_idx, (scene_start, scene_end) in enumerate(scene_list):
+            scene_number: int = scene_idx + 1  # 1-based
 
-            # total_frames is exclusive; last valid index = total_frames - 1.
-            if target_frame_index >= total_frames:
-                break
+            # FrameTimecode.get_frames() returns the 0-based frame index.
+            start_frame: int = scene_start.get_frames()
+            end_frame: int = scene_end.get_frames()
 
-            # Seek directly to the target frame for O(1) random access.
-            cap.set(cv2.CAP_PROP_POS_FRAMES, float(target_frame_index))
+            # Middle frame — explicit form avoids potential integer overflow on
+            # very long videos compared to (start + end) // 2.
+            middle_frame: int = start_frame + (end_frame - start_frame) // 2
 
+            scene_start_seconds: float = round(
+                scene_start.get_seconds(), 3
+            )
+            scene_end_seconds: float = round(
+                scene_end.get_seconds(), 3
+            )
+
+            logger.debug(
+                "Scene %d: frames [%d, %d) | middle=%d | "
+                "start=%s | end=%s",
+                scene_number,
+                start_frame,
+                end_frame,
+                middle_frame,
+                _format_timestamp(scene_start_seconds),
+                _format_timestamp(scene_end_seconds),
+            )
+
+            # Seek directly to the middle frame for O(1) random access.
+            cap.set(cv2.CAP_PROP_POS_FRAMES, float(middle_frame))
             success, frame = cap.read()
 
             if not success or frame is None or frame.size == 0:
                 logger.warning(
-                    "Could not decode frame %d (step %d) from '%s' — skipping.",
-                    target_frame_index,
-                    step,
-                    video_path,
+                    "Scene %d: could not decode middle frame %d from '%s' — skipping.",
+                    scene_number,
+                    middle_frame,
+                    path,
                 )
-                step += 1
                 continue
 
             # Use the actual position reported by OpenCV after the seek for
             # maximum accuracy; fall back to calculated value if unavailable.
             reported_ms: float = cap.get(cv2.CAP_PROP_POS_MSEC)
-            if reported_ms >= 0:
-                timestamp_seconds = round(reported_ms / 1000.0, 3)
-            else:
-                timestamp_seconds = round(target_frame_index / fps, 3)
+            timestamp_seconds: float = (
+                round(reported_ms / 1000.0, 3)
+                if reported_ms >= 0
+                else round(middle_frame / fps, 3)
+            )
 
             try:
-                b64_image = _encode_frame(
-                    frame, jpeg_quality, include_data_uri_prefix
-                )
+                b64_image = _encode_frame(frame, jpeg_quality, include_data_uri_prefix)
             except RuntimeError as exc:
                 logger.warning(
-                    "Failed to encode frame %d from '%s': %s — skipping.",
-                    target_frame_index,
-                    video_path,
+                    "Scene %d: failed to encode middle frame %d from '%s': %s — skipping.",
+                    scene_number,
+                    middle_frame,
+                    path,
                     exc,
                 )
-                step += 1
                 continue
 
             frame_data: FrameData = {
-                "frame_number": target_frame_index,
+                "frame_number": middle_frame,
                 "timestamp_seconds": timestamp_seconds,
                 "timestamp_str": _format_timestamp(timestamp_seconds),
                 "base64_image": b64_image,
+                "scene_number": scene_number,
+                "scene_start_str": _format_timestamp(scene_start_seconds),
+                "scene_end_str": _format_timestamp(scene_end_seconds),
             }
             results.append(frame_data)
 
             logger.debug(
-                "Extracted frame %d | timestamp=%s",
-                target_frame_index,
+                "Extracted scene %d middle frame %d | timestamp=%s",
+                scene_number,
+                middle_frame,
                 frame_data["timestamp_str"],
             )
 
-            step += 1
-
         logger.info(
-            "Extraction complete: %d frame(s) extracted from '%s'.",
+            "Extraction complete: %d scene frame(s) extracted from '%s'.",
             len(results),
-            video_path,
+            path,
         )
         return results
 
@@ -502,5 +700,5 @@ def extract_frames(
         # Guaranteed release regardless of success or exception.
         cap.release()
         logger.debug(
-            "Released VideoCapture for '%s' (extract_frames)", video_path
+            "Released VideoCapture for '%s' (extract_frames)", path
         )
