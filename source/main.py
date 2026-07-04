@@ -22,14 +22,12 @@ Configuration
   OPENROUTER_API_KEY must be set in the project-root .env file.
   See captioner.py for details.
 """
-
 from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
+import time
 
-import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -139,6 +137,8 @@ def main() -> None:
 
     try:
         frames = extract_frames(_INPUT_PATH)
+        frames = frames[:10]  # test with first 10 frames only
+
     except (FileNotFoundError, IOError, RuntimeError, ValueError) as exc:
         logger.error("Frame extraction failed: %s", exc)
         sys.exit(1)
@@ -170,8 +170,10 @@ def main() -> None:
             timestamp_str,
         )
 
+        #time.sleep(60)  # wait 20 seconds between requests for free tier, now increased to 60 cause the vision model is slower 
         try:
-            caption = get_caption(base64_image)
+            #caption = get_caption(base64_image)
+            caption = f"Test caption for frame at {timestamp_str}"  # mock caption
         except Exception as exc:
             # Non-fatal: log the error, write an error placeholder, and move on.
             logger.error(
