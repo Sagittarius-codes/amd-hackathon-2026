@@ -1,8 +1,19 @@
 requests==2.31.0
-opencv-python==4.9.0.80
+
+# scenedetect[opencv-headless]: uses the headless OpenCV variant so pip
+# does NOT pull in the full opencv-python (Qt/GUI) wheel alongside it.
+# Without this extra, scenedetect==0.7 pulls opencv-python as a hard dep,
+# resulting in two opencv downloads (~120 MB total) instead of one (~50 MB).
+scenedetect[opencv-headless]==0.7
+
 python-dotenv==1.0.0
-scenedetect==0.7
-fastapi==0.111.0
+
+# fastapi[slim]: excludes fastapi-cli, email_validator, httpx, jinja2,
+# ujson, and orjson — none of which are used by this project.
+# Without [slim], fastapi==0.111.0 pulls ~15 extra transitive packages
+# including the full rich/typer/shellingham CLI stack.
+fastapi[slim]==0.111.0
+
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 websockets==12.0

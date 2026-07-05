@@ -38,6 +38,7 @@ import json
 import logging
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -80,6 +81,11 @@ _CAPTIONS_PATH: Path = _OUTPUT_DIR / "captions.txt"
 # Ensure directories exist at startup
 _INPUT_DIR.mkdir(parents=True, exist_ok=True)
 _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Seconds to wait between consecutive frame caption bursts.
+# Prevents hammering the OpenRouter free-tier rate limiter.
+# The sleep is skipped for the very first frame (idx == 0).
+_INTER_FRAME_SLEEP_SECONDS: int = 10
 
 # ---------------------------------------------------------------------------
 # Global pipeline state
@@ -345,6 +351,18 @@ def _run_pipeline(max_scenes: Optional[int]) -> None:
             timestamp_str,
         )
 
+        # Rate-limit guard: pause between frames to avoid hammering the
+        # free-tier API.  Skipped for the very first frame (idx == 0) so
+        # the pipeline starts immediately.
+        if idx > 0:
+            logger.debug(
+                "Sleeping %ds before captioning scene %d/%d...",
+                _INTER_FRAME_SLEEP_SECONDS,
+                idx + 1,
+                total,
+            )
+            time.sleep(_INTER_FRAME_SLEEP_SECONDS)
+
         # Call the captioner — skip the scene on any exception.
         try:
             captions = get_all_captions(base64_image)
@@ -439,31 +457,41 @@ def _run_pipeline(max_scenes: Optional[int]) -> None:
 async def upload_video(file: UploadFile = File(...)) -> dict[str, str]:
     """Accept a video file and save it to ``input/uploaded_video.mp4``.
 
-    - Rejects the upload with **HTTP 409** if the pipeline is currently running.
-    - Cleans up the previous upload and captions output before saving.
+    Streams the upload in 1 MB chunks so large video files never fully
+    occupy RAM.  Rejects with **HTTP 409** if the pipeline is currently running.
 
     Returns
     -------
     dict
         ``{"message": "...", "filename": "uploaded_video.mp4"}``
     """
-    if _job_status == "processing":
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot upload while a captioning job is running. Wait for it to complete.",
-        )
+    with _state_lock:
+        if _job_status == "processing":
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot upload while a captioning job is running. Wait for it to complete.",
+            )
 
     _cleanup_previous_run()
     _reset_state()
 
-    content = await file.read()
-    _UPLOAD_PATH.write_bytes(content)
+    # Fix A2: stream upload in 1 MB chunks — never reads the entire video
+    # into RAM at once, handles files of arbitrary size.
+    _UPLOAD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    total_bytes = 0
+    with _UPLOAD_PATH.open("wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)  # 1 MB at a time
+            if not chunk:
+                break
+            out.write(chunk)
+            total_bytes += len(chunk)
 
     logger.info(
         "Video uploaded: original='%s', saved as '%s' (%d bytes)",
         file.filename,
         _UPLOAD_PATH.name,
-        len(content),
+        total_bytes,
     )
 
     return {"message": "Upload successful.", "filename": _UPLOAD_PATH.name}
@@ -512,19 +540,38 @@ async def process_video(body: ProcessRequest) -> dict[str, str]:
     """
     global _job_status
 
-    if _job_status == "processing":
-        raise HTTPException(
-            status_code=409,
-            detail="A captioning job is already running.",
-        )
+    # Fix A1: acquire the lock FIRST so the status transition from idle →
+    # processing is atomic.  _reset_state() is then called while the lock is
+    # NOT held (it acquires its own lock internally), but by then the status
+    # is already 'processing', so any concurrent POST /process will see it and
+    # return 409 before reaching this point.
+    with _state_lock:
+        if _job_status == "processing":
+            raise HTTPException(
+                status_code=409,
+                detail="A captioning job is already running.",
+            )
+        # Claim the slot atomically — no concurrent request can slip through.
+        _job_status = "processing"
 
     if not _UPLOAD_PATH.exists():
+        # Roll back status if no video is present.
+        with _state_lock:
+            _job_status = "idle"
         raise HTTPException(status_code=404, detail="No video uploaded yet.")
 
-    _reset_state()
-
+    # Reset progress counters while keeping _job_status = 'processing'.
+    # We deliberately do NOT call _reset_state() here because that function
+    # briefly sets _job_status = 'idle', which re-opens the race window we
+    # just closed.  Instead we reset only the fields we actually need.
+    global _progress_pct, _current_scene, _total_scenes, _results, _error_message
     with _state_lock:
-        _job_status = "processing"
+        _progress_pct  = 0.0
+        _current_scene = 0
+        _total_scenes  = 0
+        _results       = []
+        _error_message = None
+        # _job_status stays 'processing' — set above atomically
 
     thread = threading.Thread(
         target=_run_pipeline,
@@ -576,24 +623,26 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     """Persistent WebSocket connection for real-time pipeline progress.
 
     The server broadcasts JSON messages to **all** connected clients whenever
-    the pipeline emits an event.  No replay of past messages is sent to
-    late-joining clients — connect before calling ``POST /process`` to
-    receive the full stream.
-
-    Message types
-    -------------
-    ``scene_detected``  — emitted once after scene detection finishes.
-    ``captioning_start``— emitted before each scene's API call begins.
-    ``caption_result``  — emitted after each scene's captions arrive.
-    ``complete``        — emitted when the full pipeline finishes.
-    ``error``           — emitted if a fatal pipeline error occurs.
+    the pipeline emits an event.  A 60-second ping/pong timeout detects and
+    removes dead clients (fix A8 — browser tabs that hibernate or disconnect
+    without sending a proper close frame).
     """
     await manager.connect(websocket)
     try:
         while True:
-            # Keep the connection alive; the server is the sender here.
-            # We still need to await to avoid blocking the event loop.
-            await websocket.receive_text()
+            try:
+                # Fix A8: wait_for enforces a 60 s read deadline.
+                # If no message arrives (client is alive and we receive
+                # its keepalive pings) within that window, we send a ping
+                # ourselves to verify the connection is still live.
+                await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+            except asyncio.TimeoutError:
+                # No message in 60 s — send a ping to check liveness.
+                try:
+                    await websocket.send_text('{"type":"ping"}')
+                except Exception:
+                    # Send failed — client is gone.
+                    break
     except WebSocketDisconnect:
         pass
     finally:

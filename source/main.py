@@ -6,7 +6,7 @@ Entry point for the video captioning pipeline.
 Workflow
 --------
 1. Log video metadata via get_video_info().
-2. Extract one frame every 2 seconds via extract_frames() (first 10 frames).
+2. Extract one frame per detected scene via extract_frames().
 3. For each frame, call get_all_captions() to get 4 tonal styles concurrently.
 4. Print each frame's results to the terminal in a grouped, aligned format.
 5. Write all results to output/captions.txt in the same grouped format.
@@ -19,7 +19,7 @@ Paths (both resolved relative to the project root)
 
 Configuration
 -------------
-  FIREWORKS_API_KEY must be set in the project-root .env file.
+  OPENROUTER_API_KEY must be set in the project-root .env file.
   See captioner.py for details.
 """
 from __future__ import annotations
@@ -68,8 +68,8 @@ _STYLE_LABELS: dict[str, str] = {
 }
 
 # Seconds to wait before firing each frame's concurrent API burst.
-# Prevents hammering the Fireworks AI rate limiter across frames.
-_INTER_FRAME_SLEEP: int = 3
+# Must match _INTER_FRAME_SLEEP_SECONDS in app/api.py.
+_INTER_FRAME_SLEEP: int = 10
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +180,6 @@ def main() -> None:
     except (FileNotFoundError, IOError, RuntimeError, ValueError) as exc:
         logger.error("Frame extraction failed: %s", exc)
         sys.exit(1)
-
-    # Limit to first 10 frames for testing; remove this line for full runs.
-    #frames = frames[:10] | removed this as it was a part of initial testing 
 
     total_frames: int = len(frames)
     logger.info("Extracted %d scene frame(s). Starting captioning...", total_frames)

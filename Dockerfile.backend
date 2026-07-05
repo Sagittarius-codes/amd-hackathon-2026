@@ -1,0 +1,67 @@
+# Dockerfile.backend
+# ====================
+# Builds the FastAPI backend for the AMD video captioning pipeline.
+#
+# Requires BuildKit (enabled by default in Docker 23+).
+# If you're on an older Docker, prefix commands with:
+#   DOCKER_BUILDKIT=1 docker compose up --build
+#
+# Usage (standalone):
+#   docker build -f Dockerfile.backend -t captionai-backend .
+#   docker run -p 8000:8000 --env-file .env captionai-backend
+
+FROM python:3.11-slim
+
+# --------------------------------------------------------------------------
+# System dependencies required by OpenCV (headless variant still needs these)
+# --------------------------------------------------------------------------
+# libgl1        — libGL.so.1 (OpenCV imencode/imdecode backend)
+# libglib2.0-0  — GLib runtime required by some OpenCV internals
+#
+# BuildKit cache mount on /var/cache/apt and /var/lib/apt:
+#   - Skips re-downloading apt index and .deb files on subsequent builds
+#   - `--no-install-recommends` keeps the layer as small as possible
+# --------------------------------------------------------------------------
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# --------------------------------------------------------------------------
+# Install Python dependencies
+#
+# BuildKit cache mount on /root/.cache/pip:
+#   - Downloaded wheels are kept on the host between builds
+#   - A rebuild with an unchanged requirements.txt completes in seconds
+#
+# `--prefer-binary` downloads pre-compiled wheels instead of building from
+#   source — faster installs, especially for packages like numpy/pydantic.
+# --------------------------------------------------------------------------
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+        --prefer-binary \
+        --timeout 300 \
+        --retries 5 \
+        -r requirements.txt
+
+# --------------------------------------------------------------------------
+# Copy application source (ordered so rarely-changing code is in early layers)
+# --------------------------------------------------------------------------
+# source/ — pipeline modules: video_utils.py, captioner.py, main.py
+# app/    — FastAPI: api.py, schemas.py, websocket.py
+COPY source/ ./source/
+COPY app/    ./app/
+
+# --------------------------------------------------------------------------
+# Runtime volumes (docker-compose mounts the real host paths at runtime)
+# --------------------------------------------------------------------------
+VOLUME ["/app/input", "/app/output"]
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -28,11 +28,36 @@ export default function SceneCard({ dark, result }) {
   const tabStyle = TAB_COLORS[activeTab];
   const isMissing = caption === '[no caption]';
 
+  // Fix F9: navigator.clipboard is only available on HTTPS or localhost.
+  // When the app is accessed from another device on the network via plain HTTP
+  // (e.g. http://192.168.x.x:5173), fall back to the legacy execCommand path.
   const handleCopy = () => {
-    navigator.clipboard.writeText(caption).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    });
+    const attemptFallback = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = caption;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch (fallbackErr) {
+        console.error('Copy failed (both clipboard API and execCommand):', fallbackErr);
+      }
+    };
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(caption).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      }).catch(attemptFallback);
+    } else {
+      attemptFallback();
+    }
   };
 
   const c = {

@@ -1,0 +1,61 @@
+# .dockerignore
+# ====================
+# Applies to the project root build context (used by Dockerfile.backend).
+# frontend/Dockerfile uses ./frontend as its own context, so this file
+# does not affect it — frontend has its own .gitignore which npm ci respects.
+
+# --------------------------------------------------------------------------
+# Python virtual environments
+# --------------------------------------------------------------------------
+.venv/
+.venv-1/
+venv/
+env/
+
+# --------------------------------------------------------------------------
+# Python bytecode and caches
+# --------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# --------------------------------------------------------------------------
+# Version control
+# --------------------------------------------------------------------------
+.git/
+.gitignore
+
+# --------------------------------------------------------------------------
+# Node / frontend (not needed by the backend image)
+# --------------------------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --------------------------------------------------------------------------
+# Runtime data — excluded so stale files don't leak into the image layer.
+# The docker-compose volumes mount the real host directories at runtime.
+# --------------------------------------------------------------------------
+input/*.mp4
+input/*.mov
+input/*.avi
+input/*.mkv
+output/*.txt
+
+# --------------------------------------------------------------------------
+# Editor / OS artifacts
+# --------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# --------------------------------------------------------------------------
+# CI / environment
+# --------------------------------------------------------------------------
+.env
+*.env.*

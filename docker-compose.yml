@@ -1,0 +1,63 @@
+# docker-compose.yml
+# ====================
+# Two-service stack: FastAPI backend + React/nginx frontend.
+#
+# Usage:
+#   docker compose up --build        # build and start both services
+#   docker compose up --build -d     # detached (background)
+#   docker compose down              # stop and remove containers
+#
+# The .env file at the project root is loaded automatically by Compose
+# for the backend service (OPENROUTER_API_KEY, etc.).
+
+services:
+
+  # --------------------------------------------------------------------------
+  # backend — FastAPI + uvicorn
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: .                  # project root (has app/, source/, requirements.txt)
+      dockerfile: Dockerfile.backend
+    container_name: captionai-backend
+    ports:
+      - "8000:8000"               # host:container
+    env_file:
+      - .env                      # loads OPENROUTER_API_KEY and any other secrets
+    volumes:
+      # Persist uploaded videos and generated captions outside the container
+      # so they survive restarts and are accessible on the host machine.
+      - ./input:/app/input
+      - ./output:/app/output
+    networks:
+      - captionai-net
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # frontend — React built by Vite, served by nginx
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend         # frontend/ is the build context
+      dockerfile: Dockerfile
+      args:
+        # VITE_API_URL is baked into the JS bundle at build time by Vite.
+        # The browser calls this URL directly, so it must be reachable from
+        # the user's machine — hence localhost:8000 (the published port),
+        # not the internal Docker network address (backend:8000).
+        VITE_API_URL: http://localhost:8000
+    container_name: captionai-frontend
+    ports:
+      - "5173:80"                 # host 5173 → nginx 80 (matches local dev port)
+    depends_on:
+      - backend
+    networks:
+      - captionai-net
+    restart: unless-stopped
+
+# --------------------------------------------------------------------------
+# Shared network — both services can reach each other by service name
+# --------------------------------------------------------------------------
+networks:
+  captionai-net:
+    driver: bridge

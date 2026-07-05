@@ -4,7 +4,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = 'ws://localhost:8000/ws';
+const WS_URL = (() => {
+  // Derive the WebSocket URL from the HTTP API base URL so both always
+  // point at the same backend.  Converts http→ws and https→wss automatically.
+  // VITE_API_URL is baked in at build time; falls back to localhost for dev.
+  const base = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  return base.replace(/^http/, 'ws') + '/ws';
+})();
 const RECONNECT_DELAY_MS = 3000;
 
 /**
@@ -60,10 +66,16 @@ export function useWebSocket() {
 
       switch (msg.type) {
         case 'scene_detected':
+          // Fix F1: clear results and progress from any previous run before
+          // populating the new scene list.  Handles the case where the WS
+          // reconnects and a fresh pipeline run arrives while old cards are
+          // still displayed from a prior session.
+          setResults([]);
+          setProgress(10);
+          setCurrentScene(0);
           setTotalScenes(msg.total);
           setScenes(msg.scenes || []);
           setStatus('processing');
-          setProgress(10);
           break;
 
         case 'captioning_start':
@@ -96,6 +108,10 @@ export function useWebSocket() {
         case 'error':
           setStatus('error');
           setErrorMessage(msg.message || 'Unknown error');
+          break;
+
+        case 'ping':
+          // Server-side liveness ping (added in A8 fix) — discard silently.
           break;
 
         default:

@@ -40,7 +40,7 @@ from __future__ import annotations
 import base64
 import logging
 from pathlib import Path
-from typing import TypedDict, Union
+from typing import Optional, TypedDict, Union
 
 import cv2
 import numpy as np
@@ -281,8 +281,9 @@ def _uniform_fallback(
         Frames in chronological order, or an empty list if the video cannot
         be read.
     """
-    cap = _open_capture(video_path)
+    cap: Optional[cv2.VideoCapture] = None  # guard against UnboundLocalError (fix V4)
     try:
+        cap = _open_capture(video_path)  # may raise FileNotFoundError / IOError
         fps: float = cap.get(cv2.CAP_PROP_FPS)
         total_frames: int = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -334,13 +335,16 @@ def _uniform_fallback(
                 step += 1
                 continue
 
+            # Fix V3: use 1-based scene_number derived from the sample index so
+            # the frontend dedup check (r.scene === scene) treats every fallback
+            # frame as a unique scene and displays all of them.
             frame_data: FrameData = {
                 "frame_number": target_frame_index,
                 "timestamp_seconds": timestamp_seconds,
                 "timestamp_str": _format_timestamp(timestamp_seconds),
                 "base64_image": b64_image,
-                "scene_number": 0,        # 0 signals fallback origin
-                "scene_start_str": "",
+                "scene_number": step + 1,  # 1-based; was 0 which caused dedup drop
+                "scene_start_str": "",     # empty signals uniform-fallback origin
                 "scene_end_str": "",
             }
             results.append(frame_data)
@@ -349,10 +353,11 @@ def _uniform_fallback(
         return results
 
     finally:
-        cap.release()
-        logger.debug(
-            "Released VideoCapture for '%s' (uniform fallback)", video_path
-        )
+        if cap is not None:  # only release if _open_capture actually succeeded
+            cap.release()
+            logger.debug(
+                "Released VideoCapture for '%s' (uniform fallback)", video_path
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,9 @@ import { useState } from 'react';
 import axios from 'axios';
 import { Play, StopCircle, Loader, ChevronDown } from 'lucide-react';
 
-const API = 'http://localhost:8000';
+// API base URL — set VITE_API_URL at build time (see frontend/Dockerfile).
+// Falls back to localhost:8000 for local `npm run dev` usage.
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const STATUS_LABELS = {
   idle:       { label: 'Idle',        bg: '#27272a', color: '#71717a' },
@@ -15,13 +17,17 @@ const STATUS_LABELS = {
   error:      { label: 'Error',       bg: '#2d1414', color: '#f87171' },
 };
 
-export default function ProcessControls({ dark, status, onStarted, wsConnected }) {
+// Fix F6: component now receives `effectiveStatus` — the combined
+// (localStatus + WS status) expression computed in App.jsx, so the button
+// locks and shows "Running…" immediately on click without waiting for the
+// first WebSocket message to arrive from the backend.
+export default function ProcessControls({ dark, effectiveStatus, onStarted, wsConnected }) {
   const [maxScenes, setMaxScenes] = useState('');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
 
-  const isRunning = status === 'processing';
-  const badge     = STATUS_LABELS[status] || STATUS_LABELS.idle;
+  const isRunning = effectiveStatus === 'processing';
+  const badge     = STATUS_LABELS[effectiveStatus] || STATUS_LABELS.idle;
 
   const handleRun = async () => {
     setError(null);
@@ -30,6 +36,8 @@ export default function ProcessControls({ dark, status, onStarted, wsConnected }
       const body = { max_scenes: maxScenes ? parseInt(maxScenes, 10) : null };
       await axios.post(`${API}/process`, body);
       onStarted?.();
+      // Force immediate visual feedback
+      setError(null);
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Failed to start');
     } finally {

@@ -6,7 +6,9 @@ import { useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { Upload, Film, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 
-const API = 'http://localhost:8000';
+// API base URL — set VITE_API_URL at build time (see frontend/Dockerfile).
+// Falls back to localhost:8000 for local `npm run dev` usage.
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;

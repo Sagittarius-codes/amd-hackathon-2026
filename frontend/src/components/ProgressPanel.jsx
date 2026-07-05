@@ -10,12 +10,16 @@ const R      = (SIZE - STROKE) / 2;
 const CIRCUM = 2 * Math.PI * R;
 
 function statusText(status, currentScene, totalScenes) {
-  if (status === 'idle')       return 'Upload a video to begin';
-  if (status === 'error')      return '⚠ Pipeline error';
-  if (status === 'complete')   return '✓ All scenes captioned!';
-  if (currentScene === 0)      return 'Detecting scenes…';
+  if (status === 'idle')     return 'Upload a video to begin';
+  if (status === 'error')    return '⚠ Pipeline error';
+  if (status === 'complete') return '✓ All scenes captioned!';
+  // processing + no WS message yet → scene detection hasn't reported back
+  if (totalScenes === 0)     return 'Starting pipeline…';
+  // processing + scenes known but none being captioned yet → detection phase
+  if (currentScene === 0)    return 'Detecting scenes…';
   return `Captioning scene ${currentScene}…`;
 }
+
 
 function ringColor(status) {
   if (status === 'complete') return '#22c55e';

@@ -17,6 +17,9 @@ import { Clapperboard } from 'lucide-react';
 export default function App() {
   const [dark, setDark]           = useState(true);
   const [startTime, setStartTime] = useState(null);
+  // Tracks the 'detecting' phase locally so the UI responds to the button
+  // click immediately — before the first WebSocket message arrives.
+  const [localStatus, setLocalStatus] = useState(null);
 
   const {
     scenes, results, status, progress,
@@ -32,6 +35,14 @@ export default function App() {
       setStartTime(null);
     }
   }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once the real WS status transitions away from 'idle', the backend has
+  // acknowledged the run — localStatus is no longer needed.
+  useEffect(() => {
+    if (status === 'processing' || status === 'complete' || status === 'error') {
+      setLocalStatus(null);
+    }
+  }, [status]);
 
   // Find the timestamp of the scene currently being processed
   const currentTimestamp = (() => {
@@ -196,11 +207,14 @@ export default function App() {
           </div>
 
           <div style={s.sidebarSection}>
-            <ProcessControls
+          <ProcessControls
               dark={dark}
-              status={status}
+              effectiveStatus={localStatus === 'detecting' && status === 'idle' ? 'processing' : status}
               wsConnected={wsConnected}
-              onStarted={() => setStartTime(Date.now())}
+              onStarted={() => {
+                setLocalStatus('detecting');
+                setStartTime(Date.now());
+              }}
             />
           </div>
 
@@ -211,9 +225,9 @@ export default function App() {
         <main style={s.main}>
           {/* Progress ring + Timeline row */}
           <div style={s.topRow}>
-            <ProgressPanel
+          <ProgressPanel
               dark={dark}
-              status={status}
+              status={localStatus === 'detecting' && status === 'idle' ? 'processing' : status}
               progress={progress}
               currentScene={currentScene}
               totalScenes={totalScenes}
@@ -264,7 +278,7 @@ export default function App() {
               <div style={s.emptyState}>
                 <Clapperboard size={48} color={dark ? '#27272a' : '#d1d5db'} />
                 <p style={s.emptyText}>
-                  {status === 'processing'
+                  {status === 'processing' || localStatus === 'detecting'
                     ? 'Detecting scenes…'
                     : 'Scene captions will appear here'}
                 </p>

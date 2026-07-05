@@ -1,7 +1,7 @@
 """
 captioner.py
 ============
-Sends base64-encoded JPEG frames to the Fireworks AI chat-completions API and
+Sends base64-encoded JPEG frames to the OpenRouter chat-completions API and
 returns captions in four distinct tonal styles per frame.
 
 Public API
@@ -16,15 +16,15 @@ Public API
 
 Internal helpers
 ----------------
-- _load_api_key()                     - loads & caches FIREWORKS_API_KEY from .env
-- _build_payload(base64_image, style) - constructs the Fireworks request body
+- _load_api_key()                     - loads & caches OPENROUTER_API_KEY from .env
+- _build_payload(base64_image, style) - constructs the OpenRouter request body
 - _parse_caption(response_json, style)- extracts the caption string from the response
 - _fetch_caption(api_key, base64_image, style, timeout) - one full API round-trip
 - _post_with_retry(api_key, payload, timeout)            - POST with 429 retry
 
 Configuration (.env)
 --------------------
-  FIREWORKS_API_KEY=<your-key>   (required)
+  OPENROUTER_API_KEY=<your-key>   (required)
 
 The .env file is located at the project root (one directory above this file).
 """
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -64,12 +65,13 @@ CaptionDict = dict[str, str]
 # Path to the project-root .env file, resolved relative to this source file.
 _ENV_PATH: Path = Path(__file__).resolve().parent.parent / ".env"
 
-# Fireworks AI OpenAI-compatible chat-completions endpoint.
+# OpenRouter chat-completions endpoint (OpenAI-compatible).
 _API_URL: str = "https://openrouter.ai/api/v1/chat/completions"
 
-# Fireworks AI vision-capable model.
-# Swap this single constant to change the model across the entire module.
-_MODEL: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+# Vision-capable model used for all caption styles.
+# Gemma 4 26B A4B (MoE): ~4B active params, fast inference, non-reasoning,
+# supports inline base64 image_url content.
+_MODEL: str = "google/gemma-4-26b-a4b-it:free"
 
 # Base user prompt appended to every request regardless of style.
 # The system prompt shapes *how* the model answers; this says *what* to answer.
@@ -119,7 +121,7 @@ _ALL_STYLES: tuple[str, ...] = (
 # an empty/malformed response.
 _PLACEHOLDER_NO_CAPTION: str = "[no caption]"
 
-# Headers that identify this application to Fireworks AI.
+# Headers that identify this application to OpenRouter.
 _APP_HEADERS: dict[str, str] = {
     "X-Title": "AMD Video Captioner - Hackathon ACT II",
     "HTTP-Referer": "https://github.com/amd-hackathon-2026",
@@ -142,7 +144,7 @@ _cached_api_key: Optional[str] = None
 
 
 def _load_api_key() -> str:
-    """Load and cache ``FIREWORKS_API_KEY`` from the project-root ``.env`` file.
+    """Load and cache ``OPENROUTER_API_KEY`` from the project-root ``.env`` file.
 
     The key is resolved once and stored in the module-level ``_cached_api_key``
     variable.  Subsequent calls return the cached value without re-reading disk.
@@ -155,7 +157,7 @@ def _load_api_key() -> str:
     Raises
     ------
     ValueError
-        If the ``.env`` file does not exist, or if ``FIREWORKS_API_KEY`` is
+        If the ``.env`` file does not exist, or if ``OPENROUTER_API_KEY`` is
         absent or empty.
     """
     global _cached_api_key
@@ -166,7 +168,7 @@ def _load_api_key() -> str:
     if not _ENV_PATH.exists():
         raise ValueError(
             f".env file not found at '{_ENV_PATH}'. "
-            "Create it and set FIREWORKS_API_KEY=<your-key>."
+            "Create it and set OPENROUTER_API_KEY=<your-key>."
         )
 
     # override=False so an already-set environment variable is not clobbered.
@@ -181,12 +183,12 @@ def _load_api_key() -> str:
         )
 
     _cached_api_key = key
-    logger.debug("FIREWORKS_API_KEY loaded and cached successfully.")
+    logger.debug("OPENROUTER_API_KEY loaded and cached successfully.")
     return _cached_api_key
 
 
 def _build_payload(base64_image: str, style: str) -> dict[str, Any]:
-    """Construct the Fireworks AI chat-completions request body for one style.
+    """Construct the OpenRouter chat-completions request body for one style.
 
     The payload follows the OpenAI multimodal message format:
 
@@ -246,7 +248,7 @@ def _build_payload(base64_image: str, style: str) -> dict[str, Any]:
 
 
 def _parse_caption(response_json: dict[str, Any], style: str) -> str:
-    """Extract the caption text from a Fireworks AI response JSON.
+    """Extract the caption text from an OpenRouter response JSON.
 
     Navigates ``choices[0].message.content``.  If any expected key is absent
     or the value is empty, logs a warning and returns an empty string — so a
@@ -255,7 +257,7 @@ def _parse_caption(response_json: dict[str, Any], style: str) -> str:
     Parameters
     ----------
     response_json:
-        Parsed JSON body returned by the Fireworks AI API.
+        Parsed JSON body returned by the OpenRouter API.
     style:
         The style this response belongs to, used only for logging context.
 
@@ -305,7 +307,23 @@ def _parse_caption(response_json: dict[str, Any], style: str) -> str:
         )
         return ""
 
-    return content.strip()
+    # ------------------------------------------------------------------
+    # Strip reasoning-model <think>...</think> blocks (fix X3).
+    # Some models (e.g. reasoning variants) prefix their answer with an
+    # internal chain-of-thought block.  We remove it so only the final
+    # one-sentence caption reaches the caller.
+    # The DOTALL flag is required because the block spans multiple lines.
+    # ------------------------------------------------------------------
+    cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    if not cleaned:
+        logger.warning(
+            "[%s] Caption was empty after stripping <think> block — "
+            "substituting placeholder.",
+            style,
+        )
+        return ""
+
+    return cleaned
 
 
 def _post_with_retry(
@@ -313,7 +331,7 @@ def _post_with_retry(
     payload: dict[str, Any],
     timeout: float,
 ) -> requests.Response:
-    """Send a POST request to the Fireworks AI endpoint, retrying once on 429.
+    """Send a POST request to the OpenRouter endpoint, retrying once on 429.
 
     Parameters
     ----------
@@ -411,7 +429,7 @@ def _fetch_caption(
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "N/A"
         logger.error(
-            "[%s] Fireworks AI returned HTTP %s: %s",
+            "[%s] OpenRouter returned HTTP %s: %s",
             style,
             status,
             exc,
@@ -516,7 +534,7 @@ def get_all_captions(
     Raises
     ------
     ValueError
-        If ``FIREWORKS_API_KEY`` is missing from ``.env`` or is empty.
+        If ``OPENROUTER_API_KEY`` is missing from ``.env`` or is empty.
 
     Examples
     --------
@@ -621,7 +639,7 @@ def get_caption(
     ------
     ValueError
         If *style* is not one of the four valid style keys, or if
-        ``FIREWORKS_API_KEY`` is missing from ``.env``.
+        ``OPENROUTER_API_KEY`` is missing from ``.env``.
 
     Examples
     --------
