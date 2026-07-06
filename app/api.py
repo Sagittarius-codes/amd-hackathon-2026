@@ -163,10 +163,24 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# ---------------------------------------------------------------------------
+# CORS — origins allowed to call this API.
+# On Railway, the frontend is on a separate public domain. Set the env var
+# ALLOWED_ORIGINS to a comma-separated list of allowed origins, e.g.:
+#   https://captionai-frontend.up.railway.app,http://localhost:5173
+# Falls back to "*" (allow all) if not set — safe for a hackathon demo.
+# ---------------------------------------------------------------------------
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+_allow_origins: list[str] = (
+    [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    if _raw_origins != "*"
+    else ["*"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_raw_origins != "*",  # credentials only when origins are explicit
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -177,7 +191,18 @@ async def _capture_event_loop() -> None:
     """Cache the running asyncio event loop for use by the background thread."""
     global _event_loop
     _event_loop = asyncio.get_running_loop()
-    logger.info("Event loop captured. API ready on http://localhost:8000")
+    logger.info("Event loop captured. API ready.")
+
+
+@app.get("/health", summary="Health check", tags=["meta"])
+async def health_check() -> dict[str, str]:
+    """Lightweight liveness probe used by Railway and load balancers.
+
+    Returns HTTP 200 with the current job status so the response is also
+    useful for debugging without hitting the heavier /status endpoint.
+    """
+    with _state_lock:
+        return {"status": "ok", "job": _job_status}
 
 
 # ---------------------------------------------------------------------------

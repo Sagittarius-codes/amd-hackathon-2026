@@ -144,10 +144,13 @@ _cached_api_key: Optional[str] = None
 
 
 def _load_api_key() -> str:
-    """Load and cache ``OPENROUTER_API_KEY`` from the project-root ``.env`` file.
+    """Load and cache ``OPENROUTER_API_KEY`` from the environment or ``.env``.
 
-    The key is resolved once and stored in the module-level ``_cached_api_key``
-    variable.  Subsequent calls return the cached value without re-reading disk.
+    Resolution order (first hit wins):
+    1. Already-set environment variable (e.g. injected by Railway / Docker).
+    2. ``.env`` file at the project root (local development).
+
+    The key is cached after the first resolution so disk is read at most once.
 
     Returns
     -------
@@ -157,29 +160,29 @@ def _load_api_key() -> str:
     Raises
     ------
     ValueError
-        If the ``.env`` file does not exist, or if ``OPENROUTER_API_KEY`` is
-        absent or empty.
+        If ``OPENROUTER_API_KEY`` is absent or empty in both the environment
+        and the ``.env`` file.
     """
     global _cached_api_key
 
     if _cached_api_key is not None:
         return _cached_api_key
 
-    if not _ENV_PATH.exists():
-        raise ValueError(
-            f".env file not found at '{_ENV_PATH}'. "
-            "Create it and set OPENROUTER_API_KEY=<your-key>."
-        )
-
-    # override=False so an already-set environment variable is not clobbered.
-    load_dotenv(dotenv_path=_ENV_PATH, override=False)
-    logger.debug("Loaded .env from '%s'", _ENV_PATH)
-
+    # 1. Try the environment directly (Railway / Docker inject it here).
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+    # 2. Fall back to .env file for local development.
+    if not key and _ENV_PATH.exists():
+        # override=False so an already-set variable is never clobbered.
+        load_dotenv(dotenv_path=_ENV_PATH, override=False)
+        logger.debug("Loaded .env from '%s'", _ENV_PATH)
+        key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
     if not key:
         raise ValueError(
             "OPENROUTER_API_KEY is not set or is empty. "
-            f"Add it to '{_ENV_PATH}'."
+            "Set it as an environment variable (Railway Variables dashboard) "
+            f"or add it to '{_ENV_PATH}' for local development."
         )
 
     _cached_api_key = key

@@ -1,16 +1,18 @@
 # frontend/Dockerfile
 # ====================
 # Multi-stage build: Node builds the Vite app, nginx serves the static dist/.
+# Railway-compatible: no BuildKit cache mounts.
 #
-# Build arg:
-#   VITE_API_URL  — HTTP base URL of the FastAPI backend.
-#                   Default: http://localhost:8000  (local dev fallback)
-#                   In docker-compose this is set to http://backend:8000
-#                   so the browser can reach the backend via the published port.
+# Build arg (set in Railway Variables dashboard → passed as Build Arg):
+#   VITE_API_URL  — Full public URL of the deployed FastAPI backend.
+#                   e.g. https://captionai-backend.up.railway.app
+#                   This is baked into the JS bundle at build time by Vite.
+#                   The browser makes requests directly to this URL, so it
+#                   must be the Railway public domain, NOT an internal address.
 #
 # Usage (standalone):
 #   docker build \
-#     --build-arg VITE_API_URL=http://localhost:8000 \
+#     --build-arg VITE_API_URL=https://your-backend.up.railway.app \
 #     -t captionai-frontend \
 #     frontend/
 
@@ -21,6 +23,7 @@ FROM node:20-alpine AS builder
 
 # Build-time variable — baked into the static bundle by Vite at build time.
 # Must be declared BEFORE the RUN npm build step so Vite can read it.
+# Railway: set VITE_API_URL in the frontend service Variables dashboard.
 ARG VITE_API_URL=http://localhost:8000
 ENV VITE_API_URL=${VITE_API_URL}
 
@@ -28,10 +31,7 @@ WORKDIR /app
 
 # Install dependencies first (layer-cached until package*.json changes)
 COPY package.json package-lock.json ./
-# Install dependencies with BuildKit cache mount.
-# /root/.npm is the npm global cache — survives between builds on the host.
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --silent
+RUN npm ci --silent
 
 # Copy source and build
 COPY . .
@@ -39,7 +39,8 @@ RUN npm run build
 # Output lands in /app/dist/
 
 # --------------------------------------------------------------------------
-# Stage 2 — runtime
+# Stage 2 — runtime (nginx)
+# Railway injects $PORT — nginx must listen on it.
 # --------------------------------------------------------------------------
 FROM nginx:alpine
 
@@ -49,17 +50,12 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy the compiled React app from the builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# nginx config: serve index.html for all routes (React Router / SPA support)
-RUN printf 'server {\n\
-    listen 80;\n\
-    root /usr/share/nginx/html;\n\
-    index index.html;\n\
-    # Serve index.html for any route not matched by a static file\n\
-    location / {\n\
-        try_files $uri $uri/ /index.html;\n\
-    }\n\
-}\n' > /etc/nginx/conf.d/default.conf
+# Generate nginx config at container start using the injected $PORT.
+# We use an entrypoint script so $PORT is expanded at runtime, not build time.
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 80
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
