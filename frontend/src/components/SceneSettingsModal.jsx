@@ -4,7 +4,7 @@ import { Loader, Play, X } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export default function SceneSettingsModal({ onComplete, onCancel }) {
+export default function SceneSettingsModal({ onComplete, onCancel, resetWS }) {
   const [maxScenes, setMaxScenes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -16,6 +16,7 @@ export default function SceneSettingsModal({ onComplete, onCancel }) {
   const handleRun = async () => {
     setError(null);
     setLoading(true);
+    resetWS();
     try {
       const body = { max_scenes: maxScenes ? parseInt(maxScenes, 10) : null };
       await axios.post(`${API}/process`, body);

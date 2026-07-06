@@ -19,15 +19,16 @@ const parseTime = (timeStr) => {
          (secParts[1] ? parseInt(secParts[1], 10) / 1000 : 0);
 };
 
-export default function SceneCard({ result, isProcessing }) {
+export default function SceneCard({ scene, isProcessing }) {
+  console.log('SceneCard props.scene:', scene);
   const [activeTab, setActiveTab] = useState('formal');
   const [copied, setCopied] = useState(false);
 
   // Parse websocket payload structure
-  const sceneNumber = result?.scene_number || '?';
-  const captions = result?.captions || {};
-  const sceneStart = result?.scene_start_str;
-  const sceneEnd = result?.scene_end_str;
+  const sceneNumber = scene?.scene_number || '?';
+  const captions = scene?.captions || {};
+  const sceneStart = scene?.scene_start_str;
+  const sceneEnd = scene?.scene_end_str;
   
   let durationStr = '';
   if (sceneStart && sceneEnd) {
@@ -36,10 +37,11 @@ export default function SceneCard({ result, isProcessing }) {
   }
 
   const completedStylesCount = Object.keys(captions || {}).filter(k => captions[k] && captions[k] !== '[no caption]').length;
-  const progressPct = isProcessing ? (completedStylesCount / 4) * 100 : (result ? 100 : 0);
+  // If scene has captions, it's processed. We check Object.keys(captions).length
+  const progressPct = isProcessing ? (completedStylesCount / 4) * 100 : (Object.keys(captions).length > 0 ? 100 : 0);
 
-  const isPending = !result && !isProcessing;
-  const isComplete = !!result && !isProcessing;
+  const isPending = Object.keys(captions).length === 0 && !isProcessing;
+  const isComplete = Object.keys(captions).length > 0 && !isProcessing;
 
   const rawCaption = captions?.[activeTab];
   const isMissing = !rawCaption || rawCaption === '[no caption]';

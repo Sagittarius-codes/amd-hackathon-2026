@@ -139,7 +139,7 @@ export function useWebSocket() {
       try {
         const res = await fetch(`${API_URL}/status`);
         const data = await res.json();
-        if (isMounted.current && (data.status === 'processing' || data.status === 'complete')) {
+        if (isMounted.current && data.status === 'processing') {
           setStatus(data.status);
           setProgress(data.progress_pct);
           setCurrentScene(data.current_scene);

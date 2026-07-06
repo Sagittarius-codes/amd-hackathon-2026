@@ -5,7 +5,7 @@ import SceneCard from './SceneCard';
 
 export default function Dashboard({ 
   theme, toggleTheme, uploadedFile, 
-  status, progress, currentScene, totalScenes, results,
+  status, progress, currentScene, totalScenes, results, scenes,
   wsConnected, startTime
 }) {
 
@@ -137,15 +137,29 @@ export default function Dashboard({
   };
 
   const cards = [];
-  for (let i = 1; i <= totalScenes; i++) {
-    const result = results.find(r => r.scene_number === i || r.scene === i);
-    cards.push(
-      <SceneCard 
-        key={i} 
-        result={result || { scene_number: i }} 
-        isProcessing={currentScene === i} 
-      />
-    );
+  if (scenes && scenes.length > 0) {
+    scenes.forEach((s) => {
+      const result = results.find(r => r.scene_number === s.scene_number || r.scene === s.scene_number);
+      const mergedScene = { ...s, ...result };
+      cards.push(
+        <SceneCard 
+          key={s.scene_number} 
+          scene={mergedScene} 
+          isProcessing={currentScene === s.scene_number} 
+        />
+      );
+    });
+  } else {
+    for (let i = 1; i <= totalScenes; i++) {
+      const result = results.find(r => r.scene_number === i || r.scene === i);
+      cards.push(
+        <SceneCard 
+          key={i} 
+          scene={result || { scene_number: i }} 
+          isProcessing={currentScene === i} 
+        />
+      );
+    }
   }
 
   const isDetecting = !totalScenes || totalScenes === 0;

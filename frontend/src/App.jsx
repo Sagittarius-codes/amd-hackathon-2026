@@ -39,12 +39,28 @@ export default function App() {
     }
   }, [status, startTime]);
 
-  // Fast-forward stage if we recovered an active/completed session from /status
+  // Fast-forward stage to Dashboard if processing, but let Welcome screen show first
   useEffect(() => {
-    if ((status === 'processing' || status === 'complete') && stage < 4) {
+    if (status === 'processing' && stage === 2) {
       setStage(4);
     }
   }, [status, stage]);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const res = await fetch(`${API_URL}/status`);
+        const data = await res.json();
+        if (data.status === 'complete' || data.status === 'idle') {
+          reset();
+        }
+      } catch (e) {
+        console.warn("App mount status fetch failed:", e);
+      }
+    };
+    fetchStatus();
+  }, [reset]);
 
   const handleToggleTheme = () => {
     setTheme(t => t === 'dark' ? 'light' : 'dark');
@@ -72,9 +88,9 @@ export default function App() {
         <SceneSettingsModal 
           onCancel={() => setStage(2)}
           onComplete={() => {
-            reset(); // Clear old WS state
             setStage(4);
           }}
+          resetWS={reset}
         />
       )}
 
@@ -88,6 +104,7 @@ export default function App() {
           currentScene={currentScene}
           totalScenes={totalScenes}
           results={results}
+          scenes={scenes}
           wsConnected={wsConnected}
           startTime={startTime}
         />
