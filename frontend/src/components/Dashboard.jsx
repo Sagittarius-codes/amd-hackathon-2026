@@ -1,4 +1,4 @@
-import { Moon, Sun, Clapperboard, CheckCircle } from 'lucide-react';
+import { Moon, Sun, Clapperboard, CheckCircle, Film } from 'lucide-react';
 import LeftPanel from './LeftPanel';
 import SceneTimeline from './SceneTimeline';
 import SceneCard from './SceneCard';
