@@ -63,7 +63,9 @@ _SOURCE_DIR = _PROJECT_ROOT / "source"
 if str(_SOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(_SOURCE_DIR))
 
+# pyrefly: ignore [missing-import]
 from video_utils import extract_frames, get_video_info  # noqa: E402
+# pyrefly: ignore [missing-import]
 from captioner import get_all_captions  # noqa: E402
 
 # ---------------------------------------------------------------------------
