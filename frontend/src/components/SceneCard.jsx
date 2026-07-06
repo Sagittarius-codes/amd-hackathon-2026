@@ -1,41 +1,44 @@
-// src/components/SceneCard.jsx
-// Shows a scene's thumbnail placeholder, timestamps, 4 style tabs, caption,
-// and a copy-to-clipboard button.
-
 import { useState } from 'react';
 import { Copy, Check, Film } from 'lucide-react';
 
 const TABS = [
-  { key: 'formal',           label: 'Formal' },
-  { key: 'sarcastic',        label: 'Sarcastic' },
-  { key: 'humorous_tech',    label: 'Humor-Tech' },
+  { key: 'formal', label: 'Formal' },
+  { key: 'sarcastic', label: 'Sarcastic' },
+  { key: 'humorous_tech', label: 'Humor-Tech' },
   { key: 'humorous_non_tech', label: 'Humor-Non-Tech' },
 ];
 
-const TAB_COLORS = {
-  formal:           { active: '#6366f1', bg: '#eef2ff', darkBg: '#1e1e3f' },
-  sarcastic:        { active: '#f59e0b', bg: '#fffbeb', darkBg: '#2a2210' },
-  humorous_tech:    { active: '#10b981', bg: '#ecfdf5', darkBg: '#0f2318' },
-  humorous_non_tech:{ active: '#ec4899', bg: '#fdf2f8', darkBg: '#2a1020' },
-};
-
-export default function SceneCard({ dark, result }) {
+export default function SceneCard({ result, isProcessing }) {
   const [activeTab, setActiveTab] = useState('formal');
-  const [copied, setCopied]       = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const { scene, captions, frame_info } = result;
-  const caption  = captions?.[activeTab] || '[no caption]';
-  const tabStyle = TAB_COLORS[activeTab];
-  const isMissing = caption === '[no caption]';
+  // Note: if result is just a stub indicating pending/processing without full data, 
+  // we handle it. But the WS sends `caption_result` only when complete.
+  // Wait, the prompt says "Card states: Pending: reduced opacity... Processing: accent border, pulsing shadow... Complete: normal opacity".
+  // This implies we have placeholders for all scenes based on `totalScenes` and we pass `result` or `isProcessing`.
+  
+  const { scene, captions, frame_info } = result || { scene: '?', captions: {} };
+  
+  // Calculate per-scene progress based on how many caption styles are present
+  // Assuming 4 styles total. If the backend sends them all at once at the end, 
+  // it will jump 0 -> 100%. If it streams, it will increment. 
+  // The current backend sends them all at once in `caption_result`, but we build the UI 
+  // to support partials per the prompt: "increments by 25% per caption style received"
+  const completedStylesCount = Object.keys(captions || {}).filter(k => captions[k] && captions[k] !== '[no caption]').length;
+  const progressPct = isProcessing ? (completedStylesCount / 4) * 100 : (result ? 100 : 0);
 
-  // Fix F9: navigator.clipboard is only available on HTTPS or localhost.
-  // When the app is accessed from another device on the network via plain HTTP
-  // (e.g. http://192.168.x.x:5173), fall back to the legacy execCommand path.
+  const isPending = !result && !isProcessing;
+  const isComplete = !!result && !isProcessing;
+
+  const rawCaption = captions?.[activeTab];
+  const isMissing = !rawCaption || rawCaption === '[no caption]';
+  const displayCaption = isMissing ? 'Caption unavailable' : rawCaption;
+
   const handleCopy = () => {
     const attemptFallback = () => {
       try {
         const ta = document.createElement('textarea');
-        ta.value = caption;
+        ta.value = displayCaption;
         ta.style.position = 'fixed';
         ta.style.opacity = '0';
         document.body.appendChild(ta);
@@ -45,13 +48,13 @@ export default function SceneCard({ dark, result }) {
         document.body.removeChild(ta);
         setCopied(true);
         setTimeout(() => setCopied(false), 1800);
-      } catch (fallbackErr) {
-        console.error('Copy failed (both clipboard API and execCommand):', fallbackErr);
+      } catch (e) {
+        console.error('Copy failed:', e);
       }
     };
 
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(caption).then(() => {
+      navigator.clipboard.writeText(displayCaption).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1800);
       }).catch(attemptFallback);
@@ -60,153 +63,159 @@ export default function SceneCard({ dark, result }) {
     }
   };
 
-  const c = {
+  const s = {
     card: {
-      background: dark ? '#1a1a1a' : '#ffffff',
+      background: 'var(--surface)',
       borderRadius: 16,
       overflow: 'hidden',
-      border: `1.5px solid ${dark ? '#27272a' : '#f3f4f6'}`,
-      boxShadow: dark
-        ? '0 4px 24px rgba(0,0,0,0.4)'
-        : '0 2px 12px rgba(0,0,0,0.07)',
-      animation: 'fadeSlideIn 0.35s ease both',
+      border: isComplete 
+        ? '1.5px solid var(--border)' 
+        : isProcessing 
+          ? '1.5px solid var(--accent-primary)' 
+          : '1.5px solid var(--border)',
+      boxShadow: isProcessing 
+        ? '0 0 20px rgba(194, 98, 42, 0.15)' 
+        : '0 4px 12px rgba(0,0,0,0.05)',
+      animation: isProcessing ? 'pulse 2s infinite' : 'fadeSlideIn 0.35s ease both',
+      opacity: isPending ? 0.6 : 1,
+      display: 'flex',
+      flexDirection: 'column',
+      transition: 'all 0.3s ease',
     },
-    thumbnail: {
-      width: '100%',
-      aspectRatio: '16/9',
-      background: dark
-        ? `linear-gradient(135deg, #1e1e2e 0%, #252540 100%)`
-        : `linear-gradient(135deg, #e0e7ff 0%, #f5f3ff 100%)`,
+    thumbnailWrap: {
+      height: 160,
+      position: 'relative',
+      background: 'linear-gradient(135deg, #111, #222)',
+      borderBottom: isComplete ? '2px solid var(--success)' : 'none',
+    },
+    thumbnailContent: {
+      position: 'absolute',
+      inset: 0,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      position: 'relative',
+      color: '#888',
+      zIndex: 2,
     },
     sceneNum: {
-      fontSize: 28,
+      fontSize: 32,
       fontWeight: 800,
-      color: dark ? '#4f46e5' : '#6366f1',
-      lineHeight: 1,
+      color: '#ddd',
+      lineHeight: 1.2,
+      marginTop: 8,
     },
-    sceneLabel: {
-      fontSize: 10,
-      fontWeight: 700,
-      letterSpacing: '0.12em',
-      textTransform: 'uppercase',
-      color: dark ? '#52525b' : '#9ca3af',
-    },
-    timeRange: {
-      position: 'absolute',
-      bottom: 8, left: 10,
-      fontSize: 10,
+    timestamp: {
+      fontSize: 12,
       fontFamily: 'monospace',
-      background: 'rgba(0,0,0,0.55)',
-      color: '#fff',
-      padding: '2px 7px',
+      color: '#aaa',
+      marginTop: 4,
+      background: 'rgba(0,0,0,0.4)',
+      padding: '2px 8px',
       borderRadius: 4,
     },
+    shimmer: {
+      position: 'absolute',
+      inset: 0,
+      background: 'linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.05) 50%, transparent 75%)',
+      backgroundSize: '400% 100%',
+      animation: 'shimmer 2s infinite linear',
+      zIndex: 1,
+      display: isProcessing ? 'block' : 'none',
+    },
+    progressBarWrap: {
+      height: 4,
+      background: 'var(--surface-elevated)',
+      width: '100%',
+    },
+    progressBar: {
+      height: '100%',
+      background: 'var(--accent-primary)',
+      width: `${progressPct}%`,
+      transition: 'width 400ms ease-out',
+    },
     body: {
-      padding: '14px 16px',
+      padding: 16,
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
     },
     tabs: {
       display: 'flex',
-      gap: 4,
-      marginBottom: 12,
-      flexWrap: 'wrap',
+      gap: 16,
+      marginBottom: 16,
+      borderBottom: '1px solid var(--border)',
     },
-    tabBtn: (key) => ({
-      padding: '5px 10px',
-      borderRadius: 8,
-      fontSize: 11,
+    tabBtn: (isActive) => ({
+      padding: '8px 4px',
+      fontSize: 13,
       fontWeight: 600,
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'all 0.15s',
-      background: activeTab === key
-        ? TAB_COLORS[key].active
-        : dark ? '#27272a' : '#f3f4f6',
-      color: activeTab === key
-        ? '#ffffff'
-        : dark ? '#71717a' : '#6b7280',
+      color: isActive ? 'var(--accent-primary)' : 'var(--text-muted)',
+      borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
+      transition: 'all 0.15s ease',
+      marginBottom: -1,
     }),
-    captionBox: {
-      background: dark ? tabStyle.darkBg : tabStyle.bg,
-      borderRadius: 10,
-      padding: '12px 14px',
-      minHeight: 64,
+    captionArea: {
       position: 'relative',
+      background: 'var(--surface-elevated)',
+      padding: '16px',
+      borderRadius: 12,
+      flex: 1,
     },
     captionText: {
-      fontSize: 13,
+      fontSize: 14,
       lineHeight: 1.6,
-      color: isMissing
-        ? dark ? '#52525b' : '#9ca3af'
-        : dark ? '#e4e4e7' : '#111827',
+      color: isMissing ? 'var(--text-muted)' : 'var(--text-primary)',
       fontStyle: isMissing ? 'italic' : 'normal',
-      paddingRight: 28,
+      paddingRight: 24, // space for copy icon
     },
     copyBtn: {
       position: 'absolute',
-      top: 8, right: 8,
-      padding: '4px',
-      borderRadius: 6,
-      background: 'transparent',
-      color: copied ? '#22c55e' : dark ? '#52525b' : '#9ca3af',
+      top: 12,
+      right: 12,
+      color: copied ? 'var(--success)' : 'var(--text-muted)',
+      transition: 'color 0.2s',
       cursor: isMissing ? 'default' : 'pointer',
-      transition: 'color 0.15s',
-      display: 'flex',
-    },
+      opacity: isMissing ? 0 : 1,
+      pointerEvents: isMissing ? 'none' : 'auto',
+    }
   };
 
   return (
-    <div style={c.card}>
-      {/* Thumbnail */}
-      <div style={c.thumbnail}>
-        <Film size={22} color={dark ? '#4f46e5' : '#6366f1'} />
-        <span style={c.sceneNum}>{scene}</span>
-        <span style={c.sceneLabel}>Scene</span>
-        {frame_info?.scene_start_str && (
-          <span style={c.timeRange}>
-            {frame_info.scene_start_str} → {frame_info.scene_end_str}
-          </span>
-        )}
+    <div style={s.card}>
+      <div style={s.thumbnailWrap}>
+        <div style={s.thumbnailContent}>
+          <Film size={28} />
+          <div style={s.sceneNum}>Scene {scene}</div>
+          <div style={s.timestamp}>
+            {frame_info?.scene_start_str ? `${frame_info.scene_start_str} → ${frame_info.scene_end_str}` : 'Waiting...'}
+          </div>
+        </div>
+        <div style={s.shimmer} />
       </div>
 
-      {/* Body */}
-      <div style={c.body}>
-        {/* Timestamp pill */}
-        <div style={{
-          fontFamily: 'monospace',
-          fontSize: 11,
-          color: dark ? '#6366f1' : '#4f46e5',
-          marginBottom: 10,
-        }}>
-          {frame_info?.timestamp_str || '—'}
-        </div>
+      <div style={s.progressBarWrap}>
+        <div style={s.progressBar} />
+      </div>
 
-        {/* Style tabs */}
-        <div style={c.tabs}>
+      <div style={s.body}>
+        <div style={s.tabs}>
           {TABS.map(({ key, label }) => (
-            <button key={key} style={c.tabBtn(key)} onClick={() => setActiveTab(key)}>
+            <button 
+              key={key} 
+              style={s.tabBtn(activeTab === key)} 
+              onClick={() => setActiveTab(key)}
+              disabled={isPending}
+            >
               {label}
             </button>
           ))}
         </div>
 
-        {/* Caption box */}
-        <div style={c.captionBox}>
-          <p style={c.captionText}>{caption}</p>
-          <button
-            style={c.copyBtn}
-            onClick={!isMissing ? handleCopy : undefined}
-            title="Copy caption"
-          >
-            {copied
-              ? <Check size={14} />
-              : <Copy size={14} />
-            }
+        <div style={s.captionArea}>
+          <div style={s.captionText}>{displayCaption}</div>
+          <button style={s.copyBtn} onClick={handleCopy} title="Copy caption">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
           </button>
         </div>
       </div>

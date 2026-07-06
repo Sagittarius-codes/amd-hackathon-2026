@@ -1,6 +1,42 @@
-/* index.css — global reset & typography for the captioning GUI */
+/* frontend/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+:root {
+  /* Light Mode (Warm Cream) */
+  --bg: #FAF7F2;
+  --surface: #F2EDE4;
+  --surface-elevated: #EDE6D9;
+  --border: #D9CEBB;
+  --text-primary: #2C1F0F;
+  --text-secondary: #6B5744;
+  --text-muted: #9C8574;
+  --accent-primary: #C2622A;
+  --accent-hover: #A8521F;
+  --accent-soft: #F5E6D8;
+  --success: #4A7C59;
+  --error: #B94040;
+
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root.dark {
+  /* Dark Mode (Deep Navy) */
+  --bg: #0F1117;
+  --surface: #1A1D27;
+  --surface-elevated: #222536;
+  --border: #2E3148;
+  --text-primary: #F0EDE8;
+  --text-secondary: #A8A4B8;
+  --text-muted: #6B6880;
+  --accent-primary: #E07B3A;
+  --accent-hover: #F28C4A;
+  --accent-soft: #2A1F15;
+  --success: #5A9A6E;
+  --error: #D45555;
+}
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -8,16 +44,12 @@
   padding: 0;
 }
 
-:root {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 body {
+  background-color: var(--bg);
+  color: var(--text-primary);
   margin: 0;
   overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {
@@ -27,29 +59,12 @@ body {
   flex-direction: column;
 }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.15) transparent;
-}
-
-*::-webkit-scrollbar {
-  width: 5px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-  border-radius: 99px;
-}
-
 button {
   cursor: pointer;
   border: none;
   outline: none;
   font-family: inherit;
+  background: none;
 }
 
 input {
@@ -57,10 +72,54 @@ input {
   outline: none;
 }
 
-/* Smooth fade-in for scene cards */
+/* Custom Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+}
+
+/* Utility Classes */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Animations */
 @keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeSlideInRight {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeSlideOutLeft {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-100%); }
+}
+
+@keyframes pulse {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 1.0; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
 }
 
 @keyframes spin {
@@ -68,7 +127,12 @@ input {
   to   { transform: rotate(360deg); }
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+.animate-fade-slide-in {
+  animation: fadeSlideIn 0.35s ease-out forwards;
+}
+
+.shimmer-bg {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-elevated) 50%, var(--surface) 75%);
+  background-size: 400% 100%;
+  animation: shimmer 2s infinite linear;
 }
