@@ -93,25 +93,72 @@ export default function Dashboard({
       marginBottom: 24,
       border: '2px solid var(--success)',
       animation: 'fadeSlideIn 0.5s ease-out forwards',
+    },
+    detectingState: {
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      animation: 'fadeSlideIn 0.5s ease-out',
+    },
+    pulsingFilm: {
+      color: 'var(--accent-primary)',
+      animation: 'pulse 1.5s infinite',
+      marginBottom: 24,
+    },
+    detectingTitle: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: 'var(--text-primary)',
+      marginBottom: 16,
+    },
+    indeterminateBarWrap: {
+      width: 240,
+      height: 4,
+      background: 'var(--surface-elevated)',
+      borderRadius: 99,
+      overflow: 'hidden',
+      position: 'relative',
+      marginBottom: 12,
+    },
+    indeterminateBar: {
+      position: 'absolute',
+      top: 0, bottom: 0,
+      width: '40%',
+      background: 'var(--accent-primary)',
+      borderRadius: 99,
+      animation: 'slideBar 1.5s infinite ease-in-out',
+    },
+    detectingSubtext: {
+      fontSize: 14,
+      color: 'var(--text-muted)',
     }
   };
 
-  // Create an array of placeholder scenes to render all cards, 
-  // replacing them with real result data as it arrives
   const cards = [];
   for (let i = 1; i <= totalScenes; i++) {
-    const result = results.find(r => r.scene === i);
+    const result = results.find(r => r.scene_number === i || r.scene === i);
     cards.push(
       <SceneCard 
         key={i} 
-        result={result} 
+        result={result || { scene_number: i }} 
         isProcessing={currentScene === i} 
       />
     );
   }
 
+  const isDetecting = !totalScenes || totalScenes === 0;
+
   return (
     <div style={s.dashboard} className="animate-fade-slide-in">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes slideBar {
+          0% { left: -40%; }
+          50% { left: 100%; }
+          100% { left: -40%; }
+        }
+      `}} />
       <div style={s.topBar}>
         <div style={s.topLeft}>
           <div style={s.logoWrap}><Clapperboard size={18} /></div>
@@ -146,15 +193,28 @@ export default function Dashboard({
             </div>
           )}
 
-          <SceneTimeline 
-            totalScenes={totalScenes} 
-            currentScene={currentScene} 
-            results={results} 
-          />
+          {!isDetecting && (
+            <SceneTimeline 
+              totalScenes={totalScenes} 
+              currentScene={currentScene} 
+              results={results} 
+            />
+          )}
           
-          <div style={s.grid}>
-            {cards}
-          </div>
+          {isDetecting ? (
+            <div style={s.detectingState}>
+              <div style={s.pulsingFilm}><Film size={64} /></div>
+              <div style={s.detectingTitle}>Detecting scene boundaries...</div>
+              <div style={s.indeterminateBarWrap}>
+                <div style={s.indeterminateBar} />
+              </div>
+              <div style={s.detectingSubtext}>This may take a moment depending on video length</div>
+            </div>
+          ) : (
+            <div style={s.grid}>
+              {cards}
+            </div>
+          )}
         </div>
       </div>
     </div>
