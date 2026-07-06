@@ -4,12 +4,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const WS_URL = (() => {
-  // Derive the WebSocket URL from the HTTP API base URL so both always
-  // point at the same backend.  Converts http→ws and https→wss automatically.
-  // VITE_API_URL is baked in at build time; falls back to localhost for dev.
-  const base = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  return base.replace(/^http/, 'ws') + '/ws';
+  return API_URL.replace(/^http/, 'ws') + '/ws';
 })();
 const RECONNECT_DELAY_MS = 3000;
 
@@ -136,7 +133,27 @@ export function useWebSocket() {
 
   useEffect(() => {
     isMounted.current = true;
+    
+    // Fetch initial state to recover if user refreshes page
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/status`);
+        const data = await res.json();
+        if (isMounted.current && (data.status === 'processing' || data.status === 'complete')) {
+          setStatus(data.status);
+          setProgress(data.progress_pct);
+          setCurrentScene(data.current_scene);
+          setTotalScenes(data.total_scenes);
+          setResults(data.results || []);
+        }
+      } catch (e) {
+        console.warn("Could not fetch initial status:", e);
+      }
+    };
+    
+    fetchStatus();
     connect();
+    
     return () => {
       isMounted.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

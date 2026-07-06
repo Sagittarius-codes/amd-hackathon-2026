@@ -39,6 +39,13 @@ export default function App() {
     }
   }, [status, startTime]);
 
+  // Fast-forward stage if we recovered an active/completed session from /status
+  useEffect(() => {
+    if ((status === 'processing' || status === 'complete') && stage < 4) {
+      setStage(4);
+    }
+  }, [status, stage]);
+
   const handleToggleTheme = () => {
     setTheme(t => t === 'dark' ? 'light' : 'dark');
   };

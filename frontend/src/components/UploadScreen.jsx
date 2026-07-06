@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, Film, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, Clapperboard, CheckCircle, AlertCircle } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -17,11 +17,24 @@ export default function UploadScreen({ onComplete, dimmed, setUploadedFile }) {
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
 
-  const uploadFile = useCallback((file) => {
+  const uploadFile = useCallback(async (file) => {
     if (!file) return;
     setError(null);
     setUploading(true);
     setUploaded(null);
+
+    try {
+      const res = await fetch(`${API}/status`);
+      const data = await res.json();
+      if (data.status === 'processing') {
+        setError("Previous pipeline still running. Please wait or refresh the backend.");
+        setUploading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn("Could not fetch status, proceeding with upload attempt:", e);
+    }
+
     setProgress({ pct: 0, loaded: 0, total: file.size });
 
     const form = new FormData();
@@ -190,7 +203,7 @@ export default function UploadScreen({ onComplete, dimmed, setUploadedFile }) {
           <>
             <div style={s.title}>Upload complete</div>
             <div style={s.successWrap}>
-              <Film size={20} />
+              <Clapperboard size={20} />
               {uploaded.name} ({formatBytes(uploaded.size)})
             </div>
           </>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Film, Activity, CheckCircle2, Clock } from 'lucide-react';
+import { Clapperboard, Activity, CheckCircle2, Clock } from 'lucide-react';
 
 function formatTime(ms) {
   if (!ms || ms < 0) return '00:00';
@@ -194,7 +194,7 @@ export default function LeftPanel({
         <div style={s.section}>
           <div style={s.sectionTitle}>Source Video</div>
           <div style={s.fileCard}>
-            <Film size={20} color="var(--accent-primary)" />
+            <Clapperboard size={20} color="var(--accent-primary)" />
             <div>
               <div style={s.fileName} title={uploadedFile.name}>{uploadedFile.name}</div>
               <div style={s.fileSize}>{(uploadedFile.size / (1024*1024)).toFixed(1)} MB</div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, Film, CheckCircle } from 'lucide-react';
+import { Copy, Check, Clapperboard, CheckCircle } from 'lucide-react';
 
 const TABS = [
   { key: 'formal', label: 'Formal' },
@@ -251,7 +251,7 @@ export default function SceneCard({ result, isProcessing }) {
         <div style={s.filmStripLeft}>{perfs}</div>
         <div style={s.filmStripRight}>{perfs}</div>
         
-        <div style={s.topLeftIcon}><Film size={36} /></div>
+        <div style={s.topLeftIcon}><Clapperboard size={36} /></div>
         {isComplete && <div style={s.successBadge}><CheckCircle size={20} /></div>}
         {durationStr && <div style={s.durationBadge}>{durationStr}</div>}
         

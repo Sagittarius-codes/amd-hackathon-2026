@@ -1,4 +1,4 @@
-import { Moon, Sun, Clapperboard, CheckCircle, Film } from 'lucide-react';
+import { Moon, Sun, Clapperboard, CheckCircle } from 'lucide-react';
 import LeftPanel from './LeftPanel';
 import SceneTimeline from './SceneTimeline';
 import SceneCard from './SceneCard';
@@ -203,7 +203,7 @@ export default function Dashboard({
           
           {isDetecting ? (
             <div style={s.detectingState}>
-              <div style={s.pulsingFilm}><Film size={64} /></div>
+              <div style={s.pulsingFilm}><Clapperboard size={64} /></div>
               <div style={s.detectingTitle}>Detecting scene boundaries...</div>
               <div style={s.indeterminateBarWrap}>
                 <div style={s.indeterminateBar} />
