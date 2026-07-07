@@ -16,7 +16,8 @@ export default function LeftPanel({
   totalScenes,
   resultsCount,
   wsConnected,
-  startTime
+  startTime,
+  isMobileDrawer = false
 }) {
   const [elapsed, setElapsed] = useState(0);
 
@@ -40,9 +41,9 @@ export default function LeftPanel({
 
   const s = {
     panel: {
-      width: 280,
+      width: isMobileDrawer ? '100%' : 280,
       background: 'var(--surface)',
-      borderRight: '1.5px solid var(--border)',
+      borderRight: isMobileDrawer ? 'none' : '1.5px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
       padding: '24px 20px',

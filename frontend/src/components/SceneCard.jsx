@@ -97,7 +97,6 @@ export default function SceneCard({ scene, isProcessing }) {
       position: 'relative',
     },
     thumbnailWrap: {
-      height: 160,
       position: 'relative',
       background: 'linear-gradient(135deg, #2A1F15 0%, #1A1D27 60%, #0F1117 100%)',
       borderBottom: isComplete ? '2px solid var(--success)' : 'none',
@@ -200,7 +199,7 @@ export default function SceneCard({ scene, isProcessing }) {
     },
     tabs: {
       display: 'flex',
-      gap: 16,
+      gap: 8,
       marginBottom: 16,
       borderBottom: '1px solid var(--border)',
     },
@@ -212,6 +211,8 @@ export default function SceneCard({ scene, isProcessing }) {
       borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
       transition: 'all 0.15s ease',
       marginBottom: -1,
+      flex: 1,
+      minWidth: 0,
     }),
     captionArea: {
       position: 'relative',
@@ -249,7 +250,7 @@ export default function SceneCard({ scene, isProcessing }) {
           100% { background-position: -200% 0; }
         }
       `}} />
-      <div style={s.thumbnailWrap}>
+      <div style={s.thumbnailWrap} className="h-[120px] md:h-[160px]">
         <div style={s.filmStripLeft}>{perfs}</div>
         <div style={s.filmStripRight}>{perfs}</div>
         
@@ -276,6 +277,7 @@ export default function SceneCard({ scene, isProcessing }) {
             <button 
               key={key} 
               style={s.tabBtn(activeTab === key)} 
+              className="truncate text-center"
               onClick={() => setActiveTab(key)}
               disabled={isPending}
             >

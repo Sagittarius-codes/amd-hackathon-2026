@@ -1,4 +1,5 @@
-import { Moon, Sun, Clapperboard, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Moon, Sun, Clapperboard, CheckCircle, BarChart2 } from 'lucide-react';
 import LeftPanel from './LeftPanel';
 import SceneTimeline from './SceneTimeline';
 import SceneCard from './SceneCard';
@@ -8,6 +9,28 @@ export default function Dashboard({
   status, progress, currentScene, totalScenes, results, scenes,
   wsConnected, startTime
 }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    let interval;
+    if (status === 'processing' && startTime) {
+      interval = setInterval(() => {
+        setElapsed(Date.now() - startTime);
+      }, 1000);
+    } else if (status === 'complete') {
+      if (startTime) setElapsed(Date.now() - startTime);
+    }
+    return () => clearInterval(interval);
+  }, [status, startTime]);
+
+  function formatTime(ms) {
+    if (!ms || ms < 0) return '00:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
 
   const s = {
     dashboard: {
@@ -72,12 +95,6 @@ export default function Dashboard({
       flexDirection: 'column',
       padding: '24px',
       overflowY: 'auto',
-    },
-    grid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-      gap: 24,
-      marginTop: 24,
     },
     successOverlay: {
       background: 'var(--surface-elevated)',
@@ -165,12 +182,16 @@ export default function Dashboard({
   const isDetecting = !totalScenes || totalScenes === 0;
 
   return (
-    <div style={s.dashboard} className="animate-fade-slide-in">
+    <div style={s.dashboard} className="animate-fade-slide-in relative">
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes slideBar {
           0% { left: -40%; }
           50% { left: 100%; }
           100% { left: -40%; }
+        }
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
         }
       `}} />
       <div style={s.topBar}>
@@ -178,7 +199,7 @@ export default function Dashboard({
           <div style={s.logoWrap}><Clapperboard size={18} /></div>
           <div style={s.appName}>CaptionAI</div>
         </div>
-        <div style={s.topCenter}>
+        <div style={s.topCenter} className="max-[480px]:hidden">
           by Sagittarius Codes
         </div>
         <div style={s.topRight}>
@@ -189,17 +210,35 @@ export default function Dashboard({
       </div>
 
       <div style={s.mainBody}>
-        <LeftPanel 
-          uploadedFile={uploadedFile}
-          status={status}
-          progress={progress}
-          totalScenes={totalScenes}
-          resultsCount={results.length}
-          wsConnected={wsConnected}
-          startTime={startTime}
-        />
+        {/* Desktop Left Panel */}
+        <div className="hidden md:flex flex-shrink-0">
+          <LeftPanel 
+            uploadedFile={uploadedFile}
+            status={status}
+            progress={progress}
+            totalScenes={totalScenes}
+            resultsCount={results.length}
+            wsConnected={wsConnected}
+            startTime={startTime}
+            isMobileDrawer={false}
+          />
+        </div>
 
         <div style={s.contentArea}>
+          {/* Mobile Summary Bar */}
+          <div className="md:hidden flex flex-wrap items-center justify-between bg-[var(--surface-elevated)] p-3 rounded-xl mb-4 border border-[var(--border)] gap-2 shadow-sm">
+            <div className="flex gap-4 items-center">
+              <div className="text-[15px] font-bold text-[var(--text-primary)]">{Math.round(progress)}%</div>
+              <div className="text-[12px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                {results.length}/{totalScenes || '-'} Scenes
+              </div>
+            </div>
+            <div className="flex gap-4 items-center">
+              <div className="text-[13px] font-semibold text-[var(--text-secondary)]">{formatTime(elapsed)}</div>
+              <div className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-[var(--success)] shadow-[0_0_8px_var(--success)]' : 'bg-[var(--error)] animate-pulse'}`} />
+            </div>
+          </div>
+
           {status === 'complete' && (
             <div style={s.successOverlay}>
               <CheckCircle size={28} />
@@ -225,12 +264,50 @@ export default function Dashboard({
               <div style={s.detectingSubtext}>This may take a moment depending on video length</div>
             </div>
           ) : (
-            <div style={s.grid}>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-6 pb-20 md:pb-0">
               {cards}
             </div>
           )}
         </div>
       </div>
+
+      {/* Floating Action Button for Mobile Drawer */}
+      <button 
+        className="md:hidden fixed bottom-6 left-6 w-14 h-14 bg-[var(--accent-primary)] text-white rounded-full flex items-center justify-center shadow-lg z-40 transition-transform active:scale-95"
+        onClick={() => setDrawerOpen(true)}
+        aria-label="Open Stats"
+      >
+        <BarChart2 size={24} />
+      </button>
+
+      {/* Slide-up Drawer Overlay */}
+      {drawerOpen && (
+        <div 
+          className="md:hidden fixed inset-0 z-50 flex items-end bg-black/50 transition-opacity" 
+          onClick={() => setDrawerOpen(false)}
+        >
+          <div 
+            className="w-full max-h-[85vh] overflow-hidden bg-[var(--surface)] rounded-t-2xl shadow-2xl animate-[slideUp_0.3s_ease-out_forwards]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex justify-center py-3 border-b border-[var(--border)]">
+              <div className="w-12 h-1.5 bg-[var(--border)] rounded-full" />
+            </div>
+            <div className="overflow-y-auto max-h-[calc(85vh-32px)]">
+              <LeftPanel 
+                uploadedFile={uploadedFile}
+                status={status}
+                progress={progress}
+                totalScenes={totalScenes}
+                resultsCount={results.length}
+                wsConnected={wsConnected}
+                startTime={startTime}
+                isMobileDrawer={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
