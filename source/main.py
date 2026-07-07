@@ -19,7 +19,7 @@ Paths (both resolved relative to the project root)
 
 Configuration
 -------------
-  OPENROUTER_API_KEY must be set in the project-root .env file.
+  FIREWORKS_API_KEY must be set in the project-root .env file.
   See captioner.py for details.
 """
 from __future__ import annotations

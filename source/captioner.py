@@ -59,7 +59,7 @@ _API_URL: str = "https://api.fireworks.ai/inference/v1/chat/completions"
 _VISION_MODEL: str = "accounts/fireworks/models/minimax-m3"
 
 # Stage 2: Fast Text Model
-_TEXT_MODEL: str = "accounts/fireworks/models/llama-v3p3-70b-instruct"
+_TEXT_MODEL: str = "accounts/fireworks/models/llama-v3p1-8b-instruct"
 
 _STAGE1_SYSTEM_PROMPT: str = (
     "You are an expert video analyst. Examine this video frame with extreme attention to detail. "
@@ -283,6 +283,7 @@ def get_all_captions(
     logger.info("Executing 2-stage captioning pipeline...")
     logger.info("Stage 1 model: %s", _VISION_MODEL)
     logger.info("Stage 2 model: %s", _TEXT_MODEL)
+    logger.info("Using TEXT_MODEL: '%s'", _TEXT_MODEL)
 
     # Stage 1: Vision Description
     description = _fetch_vision_description(api_key, base64_image, timeout)
