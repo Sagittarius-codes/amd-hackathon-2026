@@ -66,12 +66,12 @@ CaptionDict = dict[str, str]
 _ENV_PATH: Path = Path(__file__).resolve().parent.parent / ".env"
 
 # OpenRouter chat-completions endpoint (OpenAI-compatible).
-_API_URL: str = "https://openrouter.ai/api/v1/chat/completions"
+_API_URL: str = "https://api.fireworks.ai/inference/v1/chat/completions"
 
 # Vision-capable model used for all caption styles.
 # Gemma 4 26B A4B (MoE): ~4B active params, fast inference, non-reasoning,
 # supports inline base64 image_url content.
-_MODEL: str = "google/gemma-4-26b-a4b-it:free"
+_MODEL: str = "accounts/fireworks/models/minimax-m3"
 
 # Base user prompt appended to every request regardless of style.
 # The system prompt shapes *how* the model answers; this says *what* to answer.
@@ -122,10 +122,8 @@ _ALL_STYLES: tuple[str, ...] = (
 _PLACEHOLDER_NO_CAPTION: str = "[no caption]"
 
 # Headers that identify this application to OpenRouter.
-_APP_HEADERS: dict[str, str] = {
-    "X-Title": "AMD Video Captioner - Hackathon ACT II",
-    "HTTP-Referer": "https://github.com/amd-hackathon-2026",
-}
+_APP_HEADERS: dict[str, str] = {}
+
 
 # How many seconds to wait after receiving a 429 before the single retry.
 _RATE_LIMIT_WAIT_SECONDS: int = 5
