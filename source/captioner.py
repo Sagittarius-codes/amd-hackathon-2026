@@ -1,10 +1,9 @@
 """
 captioner.py
 ============
-Sends base64-encoded JPEG frames to the Fireworks API using a two-stage pipeline:
-Stage 1: A vision model extracts a highly detailed scene description.
-Stage 2: A fast text model generates 4 distinct caption styles (formal, sarcastic, 
-humorous_tech, humorous_non_tech) based on the scene description.
+Sends base64-encoded JPEG frames to the Fireworks API using a single-stage multimodal pipeline.
+A single vision model (minimax-m3) is prompted to analyze the scene and directly output 
+4 distinct caption styles (formal, sarcastic, humorous_tech, humorous_non_tech) in JSON format.
 
 Public API
 ----------
@@ -55,35 +54,25 @@ CaptionDict = dict[str, str]
 _ENV_PATH: Path = Path(__file__).resolve().parent.parent / ".env"
 _API_URL: str = "https://api.fireworks.ai/inference/v1/chat/completions"
 
-# Stage 1: Vision Model
+# Vision Model
 _VISION_MODEL: str = "accounts/fireworks/models/minimax-m3"
 
-# Stage 2: Fast Text Model
-_TEXT_MODEL: str = "accounts/fireworks/models/llama-v3p1-8b-instruct"
-
-_STAGE1_SYSTEM_PROMPT: str = (
-    "You are an expert video analyst. Examine this video frame with extreme attention to detail. "
-    "Describe everything you observe: the people present (their age, appearance, clothing, facial "
-    "expressions, body language, actions), the environment (location, setting, objects, background), "
-    "the lighting and mood, any visible text or signage, the camera angle and framing, and any "
-    "notable details that convey context or story. Write at least 4-5 dense sentences. Be specific "
-    "and precise — this description will be used to generate creative captions."
+_SYSTEM_PROMPT: str = (
+    "You are an expert video caption writer. Analyze the provided video frame image carefully.\n"
+    "Examine everything: people present (appearance, expressions, body language, clothing, actions),\n"
+    "the environment (location, setting, objects, background), lighting, mood, any visible text,\n"
+    "camera angle and composition.\n\n"
+    "Then generate exactly 4 caption styles based on your analysis. Return ONLY a valid JSON object\n"
+    "with no markdown, no backticks, no explanation. The JSON must have exactly these 4 keys:\n\n"
+    '"formal": Professional, neutral, precise one sentence suitable for accessibility or documentation.\n'
+    '"sarcastic": Dry, deadpan, ironic one sentence. Understated humor from tone only.\n'
+    '"humorous_tech": One funny sentence with developer/programming culture references (git, deployments, null pointers, merge conflicts, stack traces, refactoring, etc.)\n'
+    '"humorous_non_tech": One funny relatable everyday sentence. Observational comedy a normal person would say watching this video.\n\n'
+    "Each value must be exactly one sentence. Be specific and creative based on what you actually see.\n"
+    "Return only the JSON object, nothing else."
 )
 
-_STAGE2_SYSTEM_PROMPT: str = (
-    "You are a creative caption writer. Given a detailed scene description, generate exactly 4 "
-    "caption variants as a JSON object. Return ONLY valid JSON, no markdown, no explanation, "
-    "no preamble. The JSON must have exactly these keys: \"formal\", \"sarcastic\", \"humorous_tech\", "
-    "\"humorous_non_tech\".\n\n"
-    "Style definitions:\n"
-    "- formal: Professional, neutral, precise one sentence. Suitable for accessibility or documentation.\n"
-    "- sarcastic: Dry, deadpan, ironic one sentence. Understated humor from tone, not obvious jokes.\n"
-    "- humorous_tech: One funny sentence packed with developer/programming culture references "
-    "(git, deployment, refactoring, null pointers, merge conflicts, stack traces, etc.)\n"
-    "- humorous_non_tech: One funny relatable everyday sentence. Observational comedy a normal "
-    "person would say while watching this video.\n\n"
-    "Each caption must be exactly one sentence. Be creative and specific to the scene details provided."
-)
+_USER_PROMPT: str = "Analyze this video frame and generate the 4 captions as JSON."
 
 _ALL_STYLES: tuple[str, ...] = (
     "formal",
@@ -161,23 +150,24 @@ def _post_with_retry(
     response.raise_for_status()
     return response
 
-def _fetch_vision_description(api_key: str, base64_image: str, timeout: float) -> str:
-    logger.debug("Starting Stage 1: Vision analysis")
+def _fetch_captions_json(api_key: str, base64_image: str, timeout: float) -> CaptionDict:
+    logger.debug("Starting single-stage multimodal caption generation")
     
     data_uri = f"data:image/jpeg;base64,{base64_image}"
     payload: dict[str, Any] = {
         "model": _VISION_MODEL,
+        "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "system",
-                "content": _STAGE1_SYSTEM_PROMPT,
+                "content": _SYSTEM_PROMPT,
             },
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": "Describe this image in detail.",
+                        "text": _USER_PROMPT,
                     },
                     {
                         "type": "image_url",
@@ -190,63 +180,25 @@ def _fetch_vision_description(api_key: str, base64_image: str, timeout: float) -
         ],
     }
 
-    try:
-        response = _post_with_retry(api_key, payload, timeout)
-    except Exception as exc:
-        logger.error("[Stage 1] Fireworks API error: %s", exc)
-        return ""
-
-    try:
-        response_json = response.json()
-        content = response_json["choices"][0]["message"]["content"]
-        # Strip reasoning blocks if any
-        cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-        logger.debug("[Stage 1] Description generated (%d chars)", len(cleaned))
-        return cleaned
-    except Exception as exc:
-        logger.error("[Stage 1] Failed to parse Fireworks response: %s", exc)
-        return ""
-
-def _fetch_captions_json(api_key: str, description: str, timeout: float) -> CaptionDict:
-    logger.debug("Starting Stage 2: JSON caption generation")
-    
-    user_message = f"Scene description: {description}\n\nGenerate the 4 caption variants as JSON."
-    payload: dict[str, Any] = {
-        "model": _TEXT_MODEL,
-        # Llama 3.1 8B Instruct supports JSON mode if the prompt specifies it.
-        # But Fireworks API might or might not enforce it with response_format.
-        # It's usually safer to include it if supported, or omit if it crashes.
-        # We'll include it.
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {
-                "role": "system",
-                "content": _STAGE2_SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": user_message,
-            },
-        ],
-    }
-
     default_result: CaptionDict = {k: _PLACEHOLDER_NO_CAPTION for k in _ALL_STYLES}
 
     try:
         response = _post_with_retry(api_key, payload, timeout)
     except Exception as exc:
-        logger.error("[Stage 2] Fireworks API error: %s", exc)
+        logger.error("Fireworks API error: %s", exc)
         return default_result
 
     try:
         response_json = response.json()
         content = response_json["choices"][0]["message"]["content"]
     except Exception as exc:
-        logger.error("[Stage 2] Failed to parse Fireworks response: %s", exc)
+        logger.error("Failed to parse Fireworks response structure: %s", exc)
         return default_result
 
+    # Strip reasoning blocks if any
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
     # Strip markdown code blocks
-    content = content.strip()
     if content.startswith("```json"):
         content = content[7:]
     elif content.startswith("```"):
@@ -263,10 +215,10 @@ def _fetch_captions_json(api_key: str, description: str, timeout: float) -> Capt
             val = parsed.get(style)
             result[style] = str(val).strip() if val else _PLACEHOLDER_NO_CAPTION
         
-        logger.info("Stage 2 complete: 4 captions generated.")
+        logger.info("4 captions generated successfully.")
         return result
     except json.JSONDecodeError as exc:
-        logger.error("[Stage 2] JSON decoding failed: %s | Raw content: %s", exc, content)
+        logger.error("JSON decoding failed: %s | Raw content: %s", exc, content)
         return default_result
 
 # ---------------------------------------------------------------------------
@@ -277,26 +229,13 @@ def get_all_captions(
     base64_image: str,
     timeout: float = 30.0,
 ) -> CaptionDict:
-    """Generate captions in all four tonal styles for one video frame using a two-stage pipeline."""
+    """Generate captions in all four tonal styles for one video frame using a single-stage pipeline."""
     api_key = _load_api_key()
 
-    logger.info("Executing 2-stage captioning pipeline...")
-    logger.info("Stage 1 model: %s", _VISION_MODEL)
-    logger.info("Stage 2 model: %s", _TEXT_MODEL)
-    logger.info("Using TEXT_MODEL: '%s'", _TEXT_MODEL)
+    logger.info("Executing single-stage captioning pipeline...")
+    logger.info("Using VISION_MODEL: '%s'", _VISION_MODEL)
 
-    # Stage 1: Vision Description
-    description = _fetch_vision_description(api_key, base64_image, timeout)
-    if not description:
-        logger.warning("Stage 1 failed or returned empty. Returning placeholders.")
-        return {k: _PLACEHOLDER_NO_CAPTION for k in _ALL_STYLES}
-
-    # Sleep to avoid rate limiting
-    logger.debug("Waiting 3s before Stage 2...")
-    time.sleep(3)
-
-    # Stage 2: Generate JSON Captions
-    results = _fetch_captions_json(api_key, description, timeout)
+    results = _fetch_captions_json(api_key, base64_image, timeout)
     return results
 
 def get_caption(
