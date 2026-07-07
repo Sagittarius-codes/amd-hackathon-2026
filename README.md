@@ -1,6 +1,6 @@
 # CaptionAI — AMD Developer Hackathon ACT II · Track 2
 
-> **AI-powered video captioning pipeline with 4 distinct caption styles, real-time WebSocket updates, and a full React GUI.**
+> **AI-powered video captioning pipeline with 4 distinct caption styles, real-time WebSocket updates, and a full modern React GUI.**
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Railway-blueviolet)](https://glorious-beauty-production-a674.up.railway.app)
 [![Backend API](https://img.shields.io/badge/Backend%20API-Railway-blue)](https://amd-hackathon-2026-production.up.railway.app)
@@ -12,7 +12,7 @@
 
 ## What It Does
 
-CaptionAI takes any video file, automatically detects scene boundaries, extracts a representative frame per scene, and generates captions in **4 distinct styles** using a large language model — all in real time, streamed live to the browser via WebSockets.
+CaptionAI takes any video file, automatically detects scene boundaries, extracts a representative frame per scene, and generates captions in **4 distinct styles** using a cutting-edge multimodal AI model — all in real time, streamed live to the browser via WebSockets.
 
 ### Caption Styles
 
@@ -32,15 +32,16 @@ Browser (React + Vite)
     │
     ├── POST /upload        → uploads video file
     ├── POST /process       → starts pipeline
+    ├── POST /stop          → aborts running pipeline
     └── WS  /ws             → receives real-time scene + caption events
                                         │
                             FastAPI Backend (uvicorn)
                                         │
                     ┌───────────────────┼───────────────────┐
                     │                   │                   │
-            PySceneDetect          OpenCV               OpenRouter API
-          (scene detection)    (frame extraction)     (LLM captioning)
-                                                    model: gemma-4-26b-a4b-it
+            PySceneDetect          OpenCV             Fireworks API
+          (scene detection)    (frame extraction)    (Multimodal LLM)
+                                                    model: minimax-m3
 ```
 
 ### Pipeline Flow
@@ -48,9 +49,9 @@ Browser (React + Vite)
 1. Video uploaded via drag-and-drop → saved to `/app/input/`
 2. PySceneDetect splits video into scenes by detecting visual cuts
 3. OpenCV extracts one representative frame per scene
-4. Each frame is sent concurrently to the LLM with 4 style prompts
-5. Captions stream back to the browser via WebSocket as they complete
-6. Results saved to `/app/output/captions.txt`
+4. Frames are sent sequentially to Fireworks AI (MiniMax M3), which analyzes the image and returns all 4 caption styles in a single JSON block.
+5. Captions stream back to the browser via WebSocket as they complete.
+6. The user can abort the pipeline safely at any time via the "Stop Pipeline" feature.
 
 ---
 
@@ -62,14 +63,14 @@ Browser (React + Vite)
 - **uvicorn** — ASGI server
 - **PySceneDetect** — scene boundary detection
 - **OpenCV** (`opencv-python-headless`) — frame extraction
-- **OpenRouter API** — LLM access (switching to Fireworks July 7th)
+- **Fireworks API** — High-performance multimodal AI access (MiniMax M3)
 - **python-dotenv** — environment variable management
 
 ### Frontend
 - **React 18** + **Vite**
+- **Tailwind CSS** — Modern, glassmorphic UI design
 - **axios** — HTTP requests
 - **lucide-react** — icons
-- **recharts** — data visualization
 - **WebSocket (native)** — real-time pipeline updates
 - **nginx** — serves static build in production
 
@@ -87,10 +88,10 @@ Browser (React + Vite)
 amd-hackathon-2026/
 │
 ├── app/
-│   └── api.py                  # FastAPI app — all routes + WebSocket + pipeline worker
+│   └── api.py                  # FastAPI app — REST + WebSocket + Threaded pipeline worker
 │
 ├── source/
-│   ├── captioner.py            # OpenRouter API client — 4 styles, concurrent requests
+│   ├── captioner.py            # Fireworks AI multimodal client — JSON output processing
 │   ├── video_utils.py          # PySceneDetect + OpenCV frame extraction
 │   └── main.py                 # CLI entry point for standalone runs
 │
@@ -103,12 +104,10 @@ amd-hackathon-2026/
 │       ├── hooks/
 │       │   └── useWebSocket.js # WS connection, all pipeline event handlers
 │       └── components/
-│           ├── VideoUpload.jsx     # Drag-and-drop upload → POST /upload
-│           ├── ProcessControls.jsx # Run button, max scenes → POST /process
-│           ├── ProgressPanel.jsx   # Circular progress ring
-│           ├── Timeline.jsx        # Horizontal scene timeline bar
-│           ├── SceneCard.jsx       # Per-scene caption card (4 style tabs)
-│           └── StatusBar.jsx       # Bottom status + elapsed timer
+│           ├── Dashboard.jsx       # Main pipeline tracking and UI grid
+│           ├── SceneCard.jsx       # Premium glassmorphic card for 4 style tabs
+│           ├── LeftPanel.jsx       # Progress ring, global stats, and Stop UI
+│           └── SceneTimeline.jsx   # Visual horizontal progress indicator
 │
 ├── tests/
 │   └── test_captioner.py
@@ -129,6 +128,8 @@ amd-hackathon-2026/
 |---|---|---|
 | `POST` | `/upload` | Upload a video file. Returns `{ filename, size }` |
 | `POST` | `/process` | Start the captioning pipeline. Body: `{ max_scenes?: int }` |
+| `POST` | `/stop`    | Abort the currently running pipeline |
+| `GET` | `/status` | Retrieve current status and progress |
 | `GET` | `/health` | Health check. Returns `{ status: "ok" }` |
 
 ### WebSocket
@@ -142,9 +143,9 @@ amd-hackathon-2026/
 | `connected` | `{ message }` | WS handshake confirmed |
 | `scenes_detected` | `{ count }` | Total scenes found |
 | `scene_start` | `{ scene_index }` | Scene captioning started |
-| `caption_ready` | `{ scene_index, style, caption }` | One caption style complete |
-| `scene_complete` | `{ scene_index }` | All 4 styles done for a scene |
-| `pipeline_complete` | `{ total_scenes }` | All scenes captioned |
+| `caption_result`| `{ scene_index, result }` | Processed captions for a single scene |
+| `stopped` | `{ summary }` | Pipeline safely aborted by user |
+| `complete` | `{ summary }` | All scenes captioned successfully |
 | `error` | `{ message }` | Pipeline error |
 
 ---
@@ -154,7 +155,7 @@ amd-hackathon-2026/
 ### Prerequisites
 
 - Docker Desktop
-- An OpenRouter API key (free tier available at [openrouter.ai](https://openrouter.ai))
+- A Fireworks AI API key (get one at [fireworks.ai](https://fireworks.ai))
 
 ### Setup
 
@@ -165,7 +166,7 @@ cd amd-hackathon-2026
 
 # 2. Create your .env file
 cp .env.example .env
-# Add your key:  OPENROUTER_API_KEY=sk-or-...
+# Add your key:  FIREWORKS_API_KEY=your_key_here
 
 # 3. Start both services
 docker compose up --build
@@ -200,7 +201,7 @@ Both services are deployed independently on Railway, connected via environment v
 
 | Variable | Description |
 |---|---|
-| `OPENROUTER_API_KEY` | Your OpenRouter API key |
+| `FIREWORKS_API_KEY` | Your Fireworks AI API key |
 | `PORT` | `8000` |
 
 **Frontend service (build arg):**
@@ -217,39 +218,6 @@ git commit -m "your message"
 git push
 # Railway auto-redeploys on push
 ```
-
----
-
-## Switching to Fireworks (July 7th)
-
-When Fireworks credits activate, update `source/captioner.py`:
-
-```python
-# Replace OpenRouter config with:
-API_URL = "https://api.fireworks.ai/inference/v1/chat/completions"
-API_KEY = os.environ.get("FIREWORKS_API_KEY")
-MODEL   = "accounts/fireworks/models/..."  # your chosen model
-```
-
-Then add `FIREWORKS_API_KEY` to the Railway backend service variables and push.
-
----
-
-## Known Limitations
-
-- **Free tier rate limits** on OpenRouter may cause `[no caption]` on some scenes — resolved with Fireworks credits
-- **0.5 GB RAM** on Railway free tier — keep test videos under ~30 MB for reliable processing
-- Uploaded videos are stored ephemerally on Railway — they do not persist across restarts
-- Scene thumbnails are not yet exposed via API — coming in next iteration
-
----
-
-## Hackathon Submission
-
-- **Track:** AMD Developer Hackathon ACT II — Track 2 (Video Captioning)
-- **Deadline:** July 11, 2026 on [lablab.ai](https://lablab.ai)
-- **Live URL:** https://glorious-beauty-production-a674.up.railway.app
-- **GitHub:** https://github.com/Sagittarius-codes/amd-hackathon-2026
 
 ---
 
