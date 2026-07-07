@@ -306,7 +306,7 @@ def _run_pipeline(max_scenes: Optional[int]) -> None:
         If not ``None``, only the first *max_scenes* scenes are captioned.
         ``None`` runs the full pipeline.
     """
-    global _job_status, _progress_pct, _current_scene, _total_scenes, _results
+    global _job_status, _progress_pct, _current_scene, _total_scenes, _results, _stop_requested
 
     # ------------------------------------------------------------------
     # Phase 1: Scene detection
