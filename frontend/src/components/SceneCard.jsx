@@ -100,6 +100,8 @@ export default function SceneCard({ scene, isProcessing }) {
       position: 'relative',
       background: 'linear-gradient(135deg, #1A1D27 0%, #0F1117 100%)',
       overflow: 'hidden',
+      height: 160,
+      minHeight: 160,
     },
     topLeftIcon: {
       position: 'absolute',
@@ -259,7 +261,7 @@ export default function SceneCard({ scene, isProcessing }) {
           100% { background-position: -200% 0; }
         }
       `}} />
-      <div style={s.thumbnailWrap} className="h-[140px] md:h-[180px]">
+      <div style={s.thumbnailWrap} className="w-full">
         <div style={s.topLeftIcon}><Clapperboard size={120} /></div>
         
         <div style={s.topBadges}>
