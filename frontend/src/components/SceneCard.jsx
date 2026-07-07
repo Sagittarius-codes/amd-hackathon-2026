@@ -79,140 +79,144 @@ export default function SceneCard({ scene, isProcessing }) {
   const s = {
     card: {
       background: 'var(--surface)',
-      borderRadius: 16,
+      borderRadius: 20,
       overflow: 'hidden',
       border: isComplete 
-        ? '1.5px solid var(--border)' 
+        ? '1px solid rgba(16, 185, 129, 0.3)' // Subtle green border if complete
         : isProcessing 
-          ? '1.5px solid var(--accent-primary)' 
-          : '1.5px solid var(--border)',
+          ? '1px solid rgba(194, 98, 42, 0.5)' // Accent primary glow
+          : '1px solid var(--border)',
       boxShadow: isProcessing 
-        ? '0 0 20px rgba(194, 98, 42, 0.15)' 
-        : '0 4px 12px rgba(0,0,0,0.05)',
-      animation: isProcessing ? 'pulse 2s infinite' : 'fadeSlideIn 0.35s ease both',
+        ? '0 12px 32px rgba(194, 98, 42, 0.2)' 
+        : '0 8px 24px rgba(0,0,0,0.04)',
+      animation: 'fadeSlideIn 0.35s ease both', // removed heavy pulse for subtle glow
       opacity: isPending ? 0.6 : 1,
       display: 'flex',
       flexDirection: 'column',
-      transition: 'all 0.3s ease',
+      transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease',
       position: 'relative',
     },
     thumbnailWrap: {
       position: 'relative',
-      background: 'linear-gradient(135deg, #2A1F15 0%, #1A1D27 60%, #0F1117 100%)',
-      borderBottom: isComplete ? '2px solid var(--success)' : 'none',
+      background: 'linear-gradient(135deg, #1A1D27 0%, #0F1117 100%)',
       overflow: 'hidden',
     },
     topLeftIcon: {
       position: 'absolute',
-      top: 12,
-      left: 12,
+      top: -20,
+      left: -20,
       color: '#fff',
-      opacity: 0.4,
-      zIndex: 2,
+      opacity: 0.05,
+      zIndex: 1,
+      transform: 'rotate(-15deg)',
     },
-    successBadge: {
+    topBadges: {
       position: 'absolute',
       top: 12,
       right: 12,
-      color: 'var(--success)',
-      zIndex: 2,
+      display: 'flex',
+      gap: 8,
+      zIndex: 3,
+    },
+    badgeSuccess: {
+      background: 'rgba(16, 185, 129, 0.2)',
+      backdropFilter: 'blur(8px)',
+      border: '1px solid rgba(16, 185, 129, 0.3)',
+      color: '#10b981',
+      fontSize: 12,
+      fontWeight: 600,
+      padding: '4px 10px',
+      borderRadius: 99,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+    },
+    sceneNumBadge: {
+      position: 'absolute',
+      bottom: 12,
+      left: 12,
+      background: 'rgba(0,0,0,0.4)',
+      backdropFilter: 'blur(8px)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      padding: '6px 12px',
+      borderRadius: 10,
+      zIndex: 3,
+      display: 'flex',
+      flexDirection: 'column',
+    },
+    sceneNumText: {
+      fontSize: 15,
+      fontWeight: 800,
+      color: '#fff',
+      letterSpacing: '0.5px',
+    },
+    timestampText: {
+      fontSize: 11,
+      fontFamily: 'monospace',
+      color: 'rgba(255,255,255,0.6)',
+      marginTop: 2,
     },
     durationBadge: {
       position: 'absolute',
       bottom: 12,
       right: 12,
       background: 'rgba(0,0,0,0.6)',
+      backdropFilter: 'blur(4px)',
       color: '#ddd',
       fontSize: 11,
       fontWeight: 600,
       padding: '4px 8px',
-      borderRadius: 99,
-      zIndex: 2,
-    },
-    thumbnailContent: {
-      position: 'absolute',
-      inset: 0,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2,
-    },
-    sceneNum: {
-      fontSize: 28,
-      fontWeight: 800,
-      color: '#fff',
-      lineHeight: 1.2,
-      textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-    },
-    timestamp: {
-      fontSize: 12,
-      fontFamily: 'monospace',
-      color: '#aaa',
-      marginTop: 4,
-      background: 'rgba(0,0,0,0.4)',
-      padding: '2px 8px',
-      borderRadius: 4,
-    },
-    filmStripLeft: {
-      position: 'absolute',
-      top: 0, left: 4, bottom: 0,
-      display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly',
-      zIndex: 1,
-    },
-    filmStripRight: {
-      position: 'absolute',
-      top: 0, right: 4, bottom: 0,
-      display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly',
-      zIndex: 1,
-    },
-    perf: {
-      width: 4, height: 12,
-      background: 'rgba(0,0,0,0.4)',
-      borderRadius: 2,
+      borderRadius: 8,
+      zIndex: 3,
     },
     shimmer: {
       position: 'absolute',
       inset: 0,
-      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)',
+      background: 'linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.06) 50%, transparent 80%)',
       backgroundSize: '200% 100%',
-      animation: 'shimmerThumbnail 1.5s infinite linear',
-      zIndex: 1,
+      animation: 'shimmerThumbnail 2s infinite linear',
+      zIndex: 2,
       display: isProcessing ? 'block' : 'none',
     },
     progressBarWrap: {
-      height: 4,
+      height: 3,
       background: 'var(--surface-elevated)',
       width: '100%',
     },
     progressBar: {
       height: '100%',
-      background: 'var(--accent-primary)',
+      background: isComplete ? 'var(--success)' : 'var(--accent-primary)',
       width: `${progressPct}%`,
-      transition: 'width 400ms ease-out',
+      transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
     },
     body: {
-      padding: 16,
+      padding: 20,
       flex: 1,
       display: 'flex',
       flexDirection: 'column',
     },
-    tabs: {
+    segmentedControl: {
       display: 'flex',
-      gap: 8,
+      background: 'var(--surface-elevated)',
+      borderRadius: 10,
+      padding: 4,
       marginBottom: 16,
-      borderBottom: '1px solid var(--border)',
+      border: '1px solid var(--border)',
     },
-    tabBtn: (isActive) => ({
-      padding: '8px 4px',
-      fontSize: 13,
-      fontWeight: 600,
-      color: isActive ? 'var(--accent-primary)' : 'var(--text-muted)',
-      borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
-      transition: 'all 0.15s ease',
-      marginBottom: -1,
+    segmentBtn: (isActive) => ({
       flex: 1,
+      padding: '6px 2px',
+      fontSize: 12,
+      fontWeight: 600,
+      color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+      background: isActive ? 'var(--surface)' : 'transparent',
+      borderRadius: 6,
+      boxShadow: isActive ? '0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)' : 'none',
+      border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
       minWidth: 0,
+      position: 'relative',
+      zIndex: isActive ? 2 : 1,
     }),
     captionArea: {
       position: 'relative',
@@ -220,50 +224,61 @@ export default function SceneCard({ scene, isProcessing }) {
       padding: '16px',
       borderRadius: 12,
       flex: 1,
+      border: '1px solid var(--border)',
+      boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.02)',
     },
     captionText: {
       fontSize: 14,
       lineHeight: 1.6,
       color: isMissing ? 'var(--text-muted)' : 'var(--text-primary)',
       fontStyle: isMissing ? 'italic' : 'normal',
-      paddingRight: 24, // space for copy icon
+      paddingRight: 28, // space for copy icon
     },
     copyBtn: {
       position: 'absolute',
       top: 12,
       right: 12,
       color: copied ? 'var(--success)' : 'var(--text-muted)',
-      transition: 'color 0.2s',
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 8,
+      padding: 6,
+      transition: 'all 0.2s ease',
       cursor: isMissing ? 'default' : 'pointer',
       opacity: isMissing ? 0 : 1,
       pointerEvents: isMissing ? 'none' : 'auto',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
     }
   };
 
-  const perfs = Array(5).fill(0).map((_, i) => <div key={i} style={s.perf} />);
-
   return (
-    <div style={s.card}>
+    <div style={s.card} className="hover:-translate-y-1 hover:shadow-xl group">
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes shimmerThumbnail {
           0% { background-position: 200% 0; }
           100% { background-position: -200% 0; }
         }
       `}} />
-      <div style={s.thumbnailWrap} className="h-[120px] md:h-[160px]">
-        <div style={s.filmStripLeft}>{perfs}</div>
-        <div style={s.filmStripRight}>{perfs}</div>
+      <div style={s.thumbnailWrap} className="h-[140px] md:h-[180px]">
+        <div style={s.topLeftIcon}><Clapperboard size={120} /></div>
         
-        <div style={s.topLeftIcon}><Clapperboard size={36} /></div>
-        {isComplete && <div style={s.successBadge}><CheckCircle size={20} /></div>}
+        <div style={s.topBadges}>
+          {isComplete && (
+            <div style={s.badgeSuccess}>
+              <CheckCircle size={14} /> Done
+            </div>
+          )}
+        </div>
+
+        <div style={s.sceneNumBadge}>
+          <span style={s.sceneNumText}>Scene {sceneNumber}</span>
+          <span style={s.timestampText}>
+            {sceneStart ? `${sceneStart} → ${sceneEnd}` : 'Waiting...'}
+          </span>
+        </div>
+
         {durationStr && <div style={s.durationBadge}>{durationStr}</div>}
         
-        <div style={s.thumbnailContent}>
-          <div style={s.sceneNum}>Scene {sceneNumber}</div>
-          <div style={s.timestamp}>
-            {sceneStart ? `${sceneStart} → ${sceneEnd}` : 'Waiting...'}
-          </div>
-        </div>
         <div style={s.shimmer} />
       </div>
 
