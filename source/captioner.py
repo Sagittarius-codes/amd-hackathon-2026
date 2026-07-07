@@ -16,7 +16,7 @@ Public API
 
 Internal helpers
 ----------------
-- _load_api_key()                     - loads & caches OPENROUTER_API_KEY from .env
+- _load_api_key()                     - loads & caches FIREWORKS_API_KEY from .env
 - _build_payload(base64_image, style) - constructs the OpenRouter request body
 - _parse_caption(response_json, style)- extracts the caption string from the response
 - _fetch_caption(api_key, base64_image, style, timeout) - one full API round-trip
@@ -24,7 +24,7 @@ Internal helpers
 
 Configuration (.env)
 --------------------
-  OPENROUTER_API_KEY=<your-key>   (required)
+  FIREWORKS_API_KEY=<your-key>   (required)
 
 The .env file is located at the project root (one directory above this file).
 """
@@ -142,7 +142,7 @@ _cached_api_key: Optional[str] = None
 
 
 def _load_api_key() -> str:
-    """Load and cache ``OPENROUTER_API_KEY`` from the environment or ``.env``.
+    """Load and cache ``FIREWORKS_API_KEY`` from the environment or ``.env``.
 
     Resolution order (first hit wins):
     1. Already-set environment variable (e.g. injected by Railway / Docker).
@@ -158,7 +158,7 @@ def _load_api_key() -> str:
     Raises
     ------
     ValueError
-        If ``OPENROUTER_API_KEY`` is absent or empty in both the environment
+        If ``FIREWORKS_API_KEY`` is absent or empty in both the environment
         and the ``.env`` file.
     """
     global _cached_api_key
@@ -167,24 +167,24 @@ def _load_api_key() -> str:
         return _cached_api_key
 
     # 1. Try the environment directly (Railway / Docker inject it here).
-    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    key = os.environ.get("FIREWORKS_API_KEY", "").strip()
 
     # 2. Fall back to .env file for local development.
     if not key and _ENV_PATH.exists():
         # override=False so an already-set variable is never clobbered.
         load_dotenv(dotenv_path=_ENV_PATH, override=False)
         logger.debug("Loaded .env from '%s'", _ENV_PATH)
-        key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+        key = os.environ.get("FIREWORKS_API_KEY", "").strip()
 
     if not key:
         raise ValueError(
-            "OPENROUTER_API_KEY is not set or is empty. "
+            "FIREWORKS_API_KEY is not set or is empty. "
             "Set it as an environment variable (Railway Variables dashboard) "
             f"or add it to '{_ENV_PATH}' for local development."
         )
 
     _cached_api_key = key
-    logger.debug("OPENROUTER_API_KEY loaded and cached successfully.")
+    logger.debug("FIREWORKS_API_KEY loaded and cached successfully.")
     return _cached_api_key
 
 
@@ -535,7 +535,7 @@ def get_all_captions(
     Raises
     ------
     ValueError
-        If ``OPENROUTER_API_KEY`` is missing from ``.env`` or is empty.
+        If ``FIREWORKS_API_KEY`` is missing from ``.env`` or is empty.
 
     Examples
     --------
@@ -640,7 +640,7 @@ def get_caption(
     ------
     ValueError
         If *style* is not one of the four valid style keys, or if
-        ``OPENROUTER_API_KEY`` is missing from ``.env``.
+        ``FIREWORKS_API_KEY`` is missing from ``.env``.
 
     Examples
     --------
