@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clapperboard, Activity, CheckCircle2, Clock } from 'lucide-react';
+import { Clapperboard, Activity, CheckCircle2, Clock, StopCircle, RotateCcw } from 'lucide-react';
 
 function formatTime(ms) {
   if (!ms || ms < 0) return '00:00';
@@ -17,7 +17,9 @@ export default function LeftPanel({
   resultsCount,
   wsConnected,
   startTime,
-  isMobileDrawer = false
+  isMobileDrawer = false,
+  onStop,
+  onRunAgain
 }) {
   const [elapsed, setElapsed] = useState(0);
 
@@ -27,7 +29,7 @@ export default function LeftPanel({
       interval = setInterval(() => {
         setElapsed(Date.now() - startTime);
       }, 1000);
-    } else if (status === 'complete') {
+    } else if (status === 'complete' || status === 'stopped') {
       // Freeze timer
       if (startTime) setElapsed(Date.now() - startTime);
     }
@@ -222,6 +224,24 @@ export default function LeftPanel({
           <div style={s.linearBar} />
         </div>
         <div style={s.pctText}>{Math.round(progress)}% Complete</div>
+
+        {status === 'processing' && (
+          <button 
+            onClick={onStop} 
+            className="mt-5 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-[var(--error)] text-[var(--error)] font-bold hover:bg-[var(--error)] hover:text-white transition-colors"
+          >
+            <StopCircle size={18} /> Stop Pipeline
+          </button>
+        )}
+
+        {(status === 'stopped' || status === 'complete') && (
+          <button 
+            onClick={onRunAgain} 
+            className="mt-5 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--surface-elevated)] border border-[var(--border)] text-[var(--text-primary)] font-bold hover:bg-[var(--accent-primary)] hover:border-[var(--accent-primary)] hover:text-white transition-all shadow-sm"
+          >
+            <RotateCcw size={18} /> Run Again
+          </button>
+        )}
       </div>
 
       <div style={s.section}>

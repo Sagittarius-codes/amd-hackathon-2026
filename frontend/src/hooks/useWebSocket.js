@@ -96,6 +96,11 @@ export function useWebSocket() {
           break;
         }
 
+        case 'stopped':
+          setStatus('stopped');
+          setCurrentScene(0);
+          break;
+
         case 'complete':
           setStatus('complete');
           setProgress(100);

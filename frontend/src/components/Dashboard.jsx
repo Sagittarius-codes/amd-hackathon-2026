@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, Clapperboard, CheckCircle, BarChart2 } from 'lucide-react';
+import { Moon, Sun, Clapperboard, CheckCircle, BarChart2, StopCircle, RotateCcw, XCircle } from 'lucide-react';
 import LeftPanel from './LeftPanel';
 import SceneTimeline from './SceneTimeline';
 import SceneCard from './SceneCard';
@@ -7,10 +7,20 @@ import SceneCard from './SceneCard';
 export default function Dashboard({ 
   theme, toggleTheme, uploadedFile, 
   status, progress, currentScene, totalScenes, results, scenes,
-  wsConnected, startTime
+  wsConnected, startTime, onRunAgain
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+
+  const handleStop = async () => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${API_URL}/stop`, { method: 'POST' });
+      if (res.ok) alert("Pipeline stopped.");
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
     let interval;
@@ -18,7 +28,7 @@ export default function Dashboard({
       interval = setInterval(() => {
         setElapsed(Date.now() - startTime);
       }, 1000);
-    } else if (status === 'complete') {
+    } else if (status === 'complete' || status === 'stopped') {
       if (startTime) setElapsed(Date.now() - startTime);
     }
     return () => clearInterval(interval);
@@ -109,6 +119,21 @@ export default function Dashboard({
       fontWeight: 700,
       marginBottom: 24,
       border: '2px solid var(--success)',
+      animation: 'fadeSlideIn 0.5s ease-out forwards',
+    },
+    stoppedOverlay: {
+      background: 'rgba(239, 68, 68, 0.1)',
+      padding: '24px',
+      borderRadius: 16,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      color: 'var(--error)',
+      fontSize: 20,
+      fontWeight: 700,
+      marginBottom: 24,
+      border: '2px solid var(--error)',
       animation: 'fadeSlideIn 0.5s ease-out forwards',
     },
     detectingState: {
@@ -221,6 +246,8 @@ export default function Dashboard({
             wsConnected={wsConnected}
             startTime={startTime}
             isMobileDrawer={false}
+            onStop={handleStop}
+            onRunAgain={onRunAgain}
           />
         </div>
 
@@ -236,6 +263,11 @@ export default function Dashboard({
             <div className="flex gap-4 items-center">
               <div className="text-[13px] font-semibold text-[var(--text-secondary)]">{formatTime(elapsed)}</div>
               <div className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-[var(--success)] shadow-[0_0_8px_var(--success)]' : 'bg-[var(--error)] animate-pulse'}`} />
+              {status === 'processing' && (
+                <button onClick={handleStop} title="Stop Pipeline" className="text-[var(--error)] p-1 rounded hover:bg-[var(--error)] hover:text-white transition-colors ml-2">
+                  <StopCircle size={18} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -243,6 +275,13 @@ export default function Dashboard({
             <div style={s.successOverlay}>
               <CheckCircle size={28} />
               Pipeline complete · Sagittarius Codes
+            </div>
+          )}
+
+          {status === 'stopped' && (
+            <div style={s.stoppedOverlay}>
+              <XCircle size={28} />
+              Pipeline stopped. Captioned {results.length}/{totalScenes} scenes.
             </div>
           )}
 
@@ -303,6 +342,8 @@ export default function Dashboard({
                 wsConnected={wsConnected}
                 startTime={startTime}
                 isMobileDrawer={true}
+                onStop={handleStop}
+                onRunAgain={onRunAgain}
               />
             </div>
           </div>

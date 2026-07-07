@@ -107,6 +107,10 @@ export default function App() {
           scenes={scenes}
           wsConnected={wsConnected}
           startTime={startTime}
+          onRunAgain={() => {
+            reset();
+            setStage(2);
+          }}
         />
       )}
     </>

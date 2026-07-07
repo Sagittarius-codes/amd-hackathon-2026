@@ -105,6 +105,7 @@ _current_scene: int = 0            # 1-based index of the scene being processed
 _total_scenes: int = 0             # set once scene detection finishes
 _results: list[dict[str, Any]] = []  # accumulated caption_result payloads
 _error_message: Optional[str] = None
+_stop_requested: bool = False
 
 # The asyncio event loop that uvicorn is running on.  Set once during startup.
 _event_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -239,7 +240,7 @@ def _push(message: dict[str, Any]) -> None:
 
 def _reset_state() -> None:
     global _job_status, _progress_pct, _current_scene, _total_scenes
-    global _results, _error_message
+    global _results, _error_message, _stop_requested
 
     with _state_lock:
         _job_status = "idle"
@@ -248,6 +249,7 @@ def _reset_state() -> None:
         _total_scenes = 0
         _results = []
         _error_message = None
+        _stop_requested = False
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +356,11 @@ def _run_pipeline(max_scenes: Optional[int]) -> None:
     captions_lines: list[str] = []
 
     for idx, frame in enumerate(frames):
+        with _state_lock:
+            if _stop_requested:
+                logger.info("Pipeline stop requested. Halting after scene %d.", idx)
+                break
+
         scene_num: int = frame.get("scene_number", idx + 1)
         timestamp_str: str = frame["timestamp_str"]
         base64_image: str = frame["base64_image"]
@@ -445,6 +452,17 @@ def _run_pipeline(max_scenes: Optional[int]) -> None:
     # ------------------------------------------------------------------
     # Phase 3: Write captions.txt, finalise state
     # ------------------------------------------------------------------
+    
+    with _state_lock:
+        was_stopped = _stop_requested
+    if was_stopped:
+        _push({"type": "stopped", "summary": {"total_scenes": total, "completed": idx}})
+        with _state_lock:
+            _job_status = "idle"
+            _progress_pct = 0.0
+            _stop_requested = False
+        return
+
     with _state_lock:
         final_results = list(_results)
 
@@ -592,13 +610,14 @@ async def process_video(body: ProcessRequest) -> dict[str, str]:
     # We deliberately do NOT call _reset_state() here because that function
     # briefly sets _job_status = 'idle', which re-opens the race window we
     # just closed.  Instead we reset only the fields we actually need.
-    global _progress_pct, _current_scene, _total_scenes, _results, _error_message
+    global _progress_pct, _current_scene, _total_scenes, _results, _error_message, _stop_requested
     with _state_lock:
         _progress_pct  = 0.0
         _current_scene = 0
         _total_scenes  = 0
         _results       = []
         _error_message = None
+        _stop_requested = False
         # _job_status stays 'processing' — set above atomically
 
     thread = threading.Thread(
@@ -614,6 +633,16 @@ async def process_video(body: ProcessRequest) -> dict[str, str]:
         body.max_scenes if body.max_scenes is not None else "unlimited",
     )
     return {"message": "Processing started."}
+
+
+@app.post("/stop", summary="Stop the running pipeline")
+async def stop_pipeline() -> dict[str, str]:
+    global _stop_requested
+    with _state_lock:
+        if _job_status != "processing":
+            raise HTTPException(status_code=409, detail="No pipeline is currently running.")
+        _stop_requested = True
+    return {"message": "Stop signal sent."}
 
 
 @app.get("/status", summary="Get current pipeline status", response_model=StatusResponse)
