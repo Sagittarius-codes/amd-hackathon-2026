@@ -287,11 +287,11 @@ export default function SceneCard({ scene, isProcessing }) {
       </div>
 
       <div style={s.body}>
-        <div style={s.tabs}>
+        <div style={s.segmentedControl}>
           {TABS.map(({ key, label }) => (
             <button 
               key={key} 
-              style={s.tabBtn(activeTab === key)} 
+              style={s.segmentBtn(activeTab === key)} 
               className="truncate text-center"
               onClick={() => setActiveTab(key)}
               disabled={isPending}
