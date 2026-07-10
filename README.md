@@ -2,7 +2,7 @@
 
 > **AI-powered video captioning pipeline with 4 distinct caption styles, real-time WebSocket updates, and a full modern React GUI.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Railway-blueviolet)](https://glorious-beauty-production-a674.up.railway.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Railway-blueviolet)](https://generator-captions-bysagittariuscodes.up.railway.app/)
 [![Backend API](https://img.shields.io/badge/Backend%20API-Railway-blue)](https://amd-hackathon-2026-production.up.railway.app)
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green)](https://fastapi.tiangolo.com)
@@ -17,7 +17,7 @@
 * **Main Tracks:** Track 2 (Video Captioning)
 * **Technologies:** Python, FastAPI, React, Vite, Tailwind CSS, PySceneDetect, OpenCV, WebSockets, Docker, Fireworks AI (MiniMax M3), Nginx.
 * **Demo Application Platform:** Railway.app
-* **Demo Application URL:** https://glorious-beauty-production-a674.up.railway.app
+* **Demo Application URL:** https://generator-captions-bysagittariuscodes.up.railway.app/
 * **GitHub Repository:** https://github.com/Sagittarius-codes/amd-hackathon-2026
 
 ### Long Description
