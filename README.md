@@ -1,4 +1,4 @@
-# CaptionAI — AMD Developer Hackathon ACT II · Track 2
+# CaptionAI — AMD Developer Hackathon ACT II
 
 > **AI-powered video captioning pipeline with 4 distinct caption styles, real-time WebSocket updates, and a full modern React GUI.**
 
@@ -7,6 +7,26 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB)](https://react.dev)
+
+---
+
+## 🏆 Hackathon Submission Details
+
+* **Submission Title:** CaptionAI: Multimodal Video Pipeline
+* **Short Description:** A real-time, AI-powered video pipeline that automatically detects scenes, extracts frames, and uses multimodal AI to generate concurrent, multi-style captions.
+* **Main Tracks:** Track 2 (Video Captioning)
+* **Technologies:** Python, FastAPI, React, Vite, Tailwind CSS, PySceneDetect, OpenCV, WebSockets, Docker, Fireworks AI (MiniMax M3), Nginx.
+* **Demo Application Platform:** Railway.app
+* **Demo Application URL:** https://glorious-beauty-production-a674.up.railway.app
+* **GitHub Repository:** https://github.com/Sagittarius-codes/amd-hackathon-2026
+
+### Long Description
+CaptionAI takes the complexity out of video accessibility and content repurposing. By leveraging advanced structural similarity indexing (SSIM) and pixel differencing via PySceneDetect, the pipeline intelligently slices any uploaded video into distinct visual scenes. It then utilizes OpenCV to extract a highly representative frame from each cut.
+
+Instead of traditional, single-tone transcriptions, CaptionAI pushes these frames through a high-performance multimodal LLM (Fireworks AI / MiniMax M3) to concurrently generate four distinct caption styles: Formal, Sarcastic, Humorous (Tech), and Humorous (Non-Tech). This entire process runs asynchronously in a custom threading daemon, streaming live updates, progress states, and caption results back to a beautiful, glassmorphic React dashboard via native WebSockets. The result is a premium, real-time user experience that makes video metadata generation effortless, dynamic, and instantly usable for different target audiences.
+
+### Additional Information (Scalability & Future Scope)
+CaptionAI is designed with horizontal scalability in mind. The frontend SPA and backend API are completely decoupled. The heavy lifting (scene detection and multimodal inference) is handled in a background worker thread, which can easily be migrated to a distributed task queue like Celery, RabbitMQ, or Apache Kafka for enterprise-scale batch processing. Furthermore, migrating the inference backend to dedicated AMD Instinct™ accelerators would exponentially speed up the multimodal throughput, opening the door for real-time live-stream captioning with sub-second latency.
 
 ---
 
@@ -187,36 +207,6 @@ uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
 cd frontend
 npm install
 npm run dev
-```
-
----
-
-## Production Deployment (Railway)
-
-Both services are deployed independently on Railway, connected via environment variables.
-
-### Environment Variables
-
-**Backend service:**
-
-| Variable | Description |
-|---|---|
-| `FIREWORKS_API_KEY` | Your Fireworks AI API key |
-| `PORT` | `8000` |
-
-**Frontend service (build arg):**
-
-| Variable | Description |
-|---|---|
-| `VITE_API_URL` | Full public URL of the backend, e.g. `https://amd-hackathon-2026-production.up.railway.app` |
-
-### Deploying Updates
-
-```bash
-git add .
-git commit -m "your message"
-git push
-# Railway auto-redeploys on push
 ```
 
 ---
